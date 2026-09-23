@@ -4,6 +4,7 @@ set -euo pipefail
 
 VM_USER="sysadmin"
 PROJECTS_DIR="/home/${VM_USER}/Projects"
+VM_ADMIN_SSH_KEY="/root/.ssh/id_ed25519_vm_admin"
 
 VMID="${1:-}"
 PROJECT_NAME="${2:-}"
@@ -38,8 +39,13 @@ if [[ "$VM_STATUS" != "running" ]]; then
     exit 1
 fi
 
-if [[ -z "$VM_IP" ]]; then
-    echo "Error: could not determine VM IPv4 address."
+if ! [[ "$VM_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "Error: invalid IPv4 address: $VM_IP"
+    exit 1
+fi
+
+if [[ ! -f "$VM_ADMIN_SSH_KEY" ]]; then
+    echo "Error: VM admin SSH private key not found: $VM_ADMIN_SSH_KEY"
     exit 1
 fi
 
@@ -49,10 +55,12 @@ SSH_READY=false
 
 for _ in {1..30}; do
     if ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
         -o ConnectTimeout=2 \
         -o BatchMode=yes \
         -o StrictHostKeyChecking=no \
-        "${SSH_TARGET}" true 2>/dev/null; then
+        "$SSH_TARGET" true 2>/dev/null; then
         SSH_READY=true
         break
     fi
@@ -67,9 +75,120 @@ fi
 
 echo "SSH is available."
 
-echo "Project setup:"
+echo "Configuring project..."
+
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    "git config --global user.name 'Jean-Philippe Maquestiaux' && \
+     git config --global user.email 'maquejp@gmail.com' && \
+     mkdir -p '$PROJECTS_DIR'"
+
+echo "Configuring GitHub SSH key..."
+
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
+
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    'if [[ ! -f ~/.ssh/id_ed25519_github ]]; then
+         ssh-keygen -t ed25519 \
+             -C "github@$(hostname)" \
+             -f ~/.ssh/id_ed25519_github \
+             -N ""
+         echo
+         echo "GitHub SSH key created."
+         echo "Add this public key to GitHub:"
+         cat ~/.ssh/id_ed25519_github.pub
+         echo
+         exit 10
+     fi'
+
+# SSH configuration is deliberately explicit so Git always uses
+# the project VM's dedicated GitHub key.
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    'cat > ~/.ssh/config << "EOF"
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_github
+    IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config'
+
+echo "Testing GitHub authentication..."
+
+GITHUB_TEST="$(
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        'ssh -T git@github.com 2>&1 || true'
+)"
+
+if [[ "$GITHUB_TEST" != *"successfully authenticated"* ]]; then
+    echo
+    echo "Error: GitHub authentication failed."
+    echo
+    echo "Public key:"
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        'cat ~/.ssh/id_ed25519_github.pub'
+    echo
+    echo "Add this key to GitHub and run the script again."
+    exit 1
+fi
+
+echo "GitHub authentication OK."
+
+PROJECT_DIR="${PROJECTS_DIR}/${PROJECT_NAME}"
+GITHUB_URL="git@github.com:${GITHUB_REPO}.git"
+
+echo "Cloning project..."
+
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    "if [[ -d '$PROJECT_DIR/.git' ]]; then
+         echo 'Project already cloned: $PROJECT_DIR'
+     elif [[ -e '$PROJECT_DIR' ]]; then
+         echo 'Error: project directory already exists: $PROJECT_DIR'
+         exit 1
+     else
+         git clone '$GITHUB_URL' '$PROJECT_DIR'
+     fi"
+
+echo
+echo "Project setup complete:"
 echo "  VM:          $VMID"
 echo "  IP:          $VM_IP"
 echo "  User:        $VM_USER"
 echo "  Project:     $PROJECT_NAME"
 echo "  GitHub repo: $GITHUB_REPO"
+echo "  Directory:   $PROJECT_DIR"
