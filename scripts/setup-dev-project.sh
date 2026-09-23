@@ -100,7 +100,7 @@ if [[ -z "$GITHUB_REPO" ]]; then
         -o BatchMode=yes \
         -o StrictHostKeyChecking=no \
         "$SSH_TARGET" \
-        "mkdir -p '$PROJECT_DIR' && git -C '$PROJECT_DIR' init"
+        "mkdir -p '$PROJECT_DIR' && git -C '$PROJECT_DIR' init --initial-branch=main"
 
     echo
     echo "Project setup complete:"
