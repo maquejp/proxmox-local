@@ -14,12 +14,14 @@ GITHUB_REPO="${4:-}"
 SSH_TARGET="${VM_USER}@${VM_IP}"
 
 usage() {
-    echo "Usage: $0 <vmid> <project-name> <vm-ip> <github-repo>"
-    echo "Example: $0 153 mon-projet 192.168.1.153 maquejp/mon-projet"
+    echo "Usage: $0 <vmid> <project-name> <vm-ip> [github-repo]"
+    echo "Examples:"
+    echo "  $0 153 mon-projet 192.168.1.153"
+    echo "  $0 153 mon-projet 192.168.1.153 maquejp/mon-projet"
     exit 1
 }
 
-[[ -n "$VMID" && -n "$PROJECT_NAME" && -n "$VM_IP" && -n "$GITHUB_REPO" ]] || usage
+[[ -n "$VMID" && -n "$PROJECT_NAME" && -n "$VM_IP" ]] || usage
 
 if ! [[ "$VMID" =~ ^[0-9]+$ ]]; then
     echo "Error: VMID must be numeric."
@@ -86,6 +88,29 @@ ssh \
     "git config --global user.name 'Jean-Philippe Maquestiaux' && \
      git config --global user.email 'maquejp@gmail.com' && \
      mkdir -p '$PROJECTS_DIR'"
+
+PROJECT_DIR="${PROJECTS_DIR}/${PROJECT_NAME}"
+
+if [[ -z "$GITHUB_REPO" ]]; then
+    echo "Creating local Git project..."
+
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        "mkdir -p '$PROJECT_DIR' && git -C '$PROJECT_DIR' init"
+
+    echo
+    echo "Project setup complete:"
+    echo "  VM:        $VMID"
+    echo "  IP:        $VM_IP"
+    echo "  User:      $VM_USER"
+    echo "  Project:   $PROJECT_NAME"
+    echo "  Directory: $PROJECT_DIR"
+    exit 0
+fi
 
 echo "Configuring GitHub SSH key..."
 
@@ -198,7 +223,6 @@ fi
 
 echo "GitHub authentication OK."
 
-PROJECT_DIR="${PROJECTS_DIR}/${PROJECT_NAME}"
 GITHUB_URL="git@github.com:${GITHUB_REPO}.git"
 
 echo "Cloning project..."
