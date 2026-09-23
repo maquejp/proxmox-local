@@ -97,24 +97,47 @@ ssh \
     "$SSH_TARGET" \
     'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
 
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
-    'if [[ ! -f ~/.ssh/id_ed25519_github ]]; then
-         ssh-keygen -t ed25519 \
-             -C "github@$(hostname)" \
-             -f ~/.ssh/id_ed25519_github \
-             -N ""
-         echo
-         echo "GitHub SSH key created."
-         echo "Add this public key to GitHub:"
-         cat ~/.ssh/id_ed25519_github.pub
-         echo
-         exit 10
-     fi'
+GITHUB_KEY_EXISTS="$(
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        '[[ -f ~/.ssh/id_ed25519_github ]] && echo yes || echo no'
+)"
+
+if [[ "$GITHUB_KEY_EXISTS" == "no" ]]; then
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        'ssh-keygen -t ed25519 \
+            -C "github@$(hostname)" \
+            -f ~/.ssh/id_ed25519_github \
+            -N "" >/dev/null'
+
+    echo
+    echo "GitHub SSH key created."
+    echo
+    echo "Add the following public key to your GitHub account:"
+    echo
+
+    ssh \
+        -i "$VM_ADMIN_SSH_KEY" \
+        -o IdentitiesOnly=yes \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=no \
+        "$SSH_TARGET" \
+        'cat ~/.ssh/id_ed25519_github.pub'
+
+    echo
+    echo "GitHub → Settings → SSH and GPG keys → New SSH key"
+    echo
+    read -rp "Press Enter after adding the key to GitHub..."
+fi
 
 # SSH configuration is deliberately explicit so Git always uses
 # the project VM's dedicated GitHub key.
@@ -132,6 +155,17 @@ Host github.com
     IdentitiesOnly yes
 EOF
 chmod 600 ~/.ssh/config'
+
+# Trust GitHub's host key on a fresh VM.
+ssh \
+    -i "$VM_ADMIN_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=no \
+    "$SSH_TARGET" \
+    'touch ~/.ssh/known_hosts && \
+     ssh-keygen -F github.com -f ~/.ssh/known_hosts >/dev/null || \
+     ssh-keyscan -H github.com >> ~/.ssh/known_hosts'
 
 echo "Testing GitHub authentication..."
 
@@ -158,7 +192,7 @@ if [[ "$GITHUB_TEST" != *"successfully authenticated"* ]]; then
         "$SSH_TARGET" \
         'cat ~/.ssh/id_ed25519_github.pub'
     echo
-    echo "Add this key to GitHub and run the script again."
+    echo "Make sure this key is registered in GitHub."
     exit 1
 fi
 
