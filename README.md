@@ -587,7 +587,7 @@ Project directories:
 
 ```text
 /home/sysadmin/Projects/atlantis
-/home/sysadmin/Projects/lebistro
+/home/sysadmin/Projects/lebistroNew
 /home/sysadmin/Projects/jean-philippe
 ```
 
@@ -600,7 +600,7 @@ VS Code Server is installed automatically on first connection.
 | VM ID | Name            | IP              | Project                    |
 | ----: | --------------- | --------------- | -------------------------- |
 | `150` | `atlantis`      | `192.168.1.150` | `~/Projects/atlantis`      |
-| `151` | `lebistro`      | `192.168.1.151` | `~/Projects/lebistro`      |
+| `151` | `lebistro`      | `192.168.1.151` | `~/Projects/lebistroNew`   |
 | `152` | `jean-philippe` | `192.168.1.152` | `~/Projects/jean-philippe` |
 
 All three VMs:
@@ -631,7 +631,7 @@ Status: operational.
 VM ID:     151
 Hostname:  lebistro
 IP:        192.168.1.151
-Project:   /home/sysadmin/Projects/lebistro
+Project:   /home/sysadmin/Projects/lebistroNew
 Vite:      5173/tcp
 ```
 
