@@ -19,8 +19,11 @@
   - [7.2 Usage](#72-usage)
 - [8. SSH Architecture](#8-ssh-architecture)
   - [8.1 Mac → VM](#81-mac--vm)
-  - [8.2 VM → GitHub](#82-vm--github)
+  - [8.2 Proxmox → VM](#82-proxmox--vm)
+  - [8.3 VM → GitHub](#83-vm--github)
 - [9. Project Setup](#9-project-setup)
+  - [9.1 Setup Script](#91-setup-script)
+  - [9.2 Cleanup Script](#92-cleanup-script)
 - [10. Git Configuration](#10-git-configuration)
 - [11. Vite Development Server](#11-vite-development-server)
 - [12. Firewall](#12-firewall)
@@ -247,10 +250,10 @@ The template does not contain project-specific configuration.
 
 ## 7. VM Creation
 
-The Proxmox host contains:
+The repository contains:
 
 ```text
-/root/create-dev-vm.sh
+scripts/create-dev-vm.sh
 ```
 
 The script uses template `198` and creates a full VM clone.
@@ -264,7 +267,8 @@ set -euo pipefail
 
 TEMPLATE_ID=198
 GATEWAY="192.168.1.1"
-SSH_KEY="/root/id_ed25519.pub"
+MAC_SSH_KEY="/root/id_ed25519.pub"
+VM_ADMIN_SSH_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
 
 VMID="${1:-}"
 VM_NAME="${2:-}"
@@ -293,8 +297,13 @@ if ! qm status "$TEMPLATE_ID" &>/dev/null; then
     exit 1
 fi
 
-if [[ ! -f "$SSH_KEY" ]]; then
-    echo "Error: SSH public key not found: $SSH_KEY"
+if [[ ! -f "$MAC_SSH_KEY" ]]; then
+    echo "Error: SSH public key not found: $MAC_SSH_KEY"
+    exit 1
+fi
+
+if [[ ! -f "$VM_ADMIN_SSH_KEY" ]]; then
+    echo "Error: SSH public key not found: $VM_ADMIN_SSH_KEY"
     exit 1
 fi
 
@@ -305,13 +314,19 @@ fi
 
 echo "Creating VM $VMID ($VM_NAME) with IP $VM_IP..."
 
+SSH_KEYS_FILE="$(mktemp)"
+
+cat "$MAC_SSH_KEY" "$VM_ADMIN_SSH_KEY" > "$SSH_KEYS_FILE"
+
+trap 'rm -f "$SSH_KEYS_FILE"' EXIT
+
 qm clone "$TEMPLATE_ID" "$VMID" \
     --name "$VM_NAME" \
     --full 1
 
 qm set "$VMID" \
     --ciuser sysadmin \
-    --sshkeys "$SSH_KEY" \
+    --sshkeys "$SSH_KEYS_FILE" \
     --ipconfig0 "ip=${VM_IP}/24,gw=${GATEWAY}"
 
 qm start "$VMID"
@@ -326,16 +341,16 @@ echo "  SSH:      ssh sysadmin@$VM_IP"
 
 ### 7.2 Usage
 
-From the Proxmox host:
+From the repository root on Proxmox:
 
 ```bash
-/root/create-dev-vm.sh <VMID> <project-name> <IP>
+./scripts/create-dev-vm.sh <VMID> <project-name> <IP>
 ```
 
 Example:
 
 ```bash
-/root/create-dev-vm.sh 153 new-project 192.168.1.153
+./scripts/create-dev-vm.sh 153 new-project 192.168.1.153
 ```
 
 The script:
@@ -343,9 +358,9 @@ The script:
 1. verifies the parameters
 2. checks that the VM ID is available
 3. verifies that template `198` exists
-4. verifies the Cloud-Init SSH public key
-5. performs a full clone
-6. configures Cloud-Init
+4. verifies the Mac and Proxmox administration public keys
+5. injects both keys through Cloud-Init
+6. performs a full clone
 7. assigns the static IP
 8. starts the VM
 
@@ -353,21 +368,15 @@ The script:
 
 ## 8. SSH Architecture
 
-Two separate SSH relationships are deliberately used:
+Three separate SSH relationships are deliberately used:
 
 ```text
-                 Mac
-                  │
-                  │ SSH
-                  ▼
-             Development VM
-                  │
-                  │ SSH
-                  ▼
-                GitHub
+Mac ───────────────SSH───────────────┐
+                                     ▼
+Proxmox ────────────SSH──────► Development VM ─── SSH ───► GitHub
 ```
 
-These connections use **different SSH keys**.
+These connections use **separate SSH keys**.
 
 ### 8.1 Mac → VM
 
@@ -389,101 +398,83 @@ ssh sysadmin@192.168.1.150
 
 SSH password authentication is not required.
 
-### 8.2 VM → GitHub
+### 8.2 Proxmox → VM
+
+The setup script connects from Proxmox to the VM with a separate administration key:
+
+```text
+Private key: /root/.ssh/id_ed25519_vm_admin
+Public key:  /root/.ssh/id_ed25519_vm_admin.pub
+```
+
+The public key is injected into each VM by `create-dev-vm.sh`. It lets `setup-dev-project.sh` configure the VM without using the Mac's private key.
+
+### 8.3 VM → GitHub
 
 Each project VM has its **own dedicated GitHub SSH key**.
 
-Example:
-
-```bash
-ssh-keygen -t ed25519 -C "atlantis@proxmox"
-```
-
-For each project, use its own identifier:
-
-```bash
-ssh-keygen -t ed25519 -C "<project>@proxmox"
-```
-
-Display the public key:
-
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add it to GitHub as an **Authentication Key**.
-
-Recommended title:
-
-```text
-Proxmox VM - <project>
-```
-
-Test:
-
-```bash
-ssh -T git@github.com
-```
+In GitHub mode, `setup-dev-project.sh` creates it when needed at `~/.ssh/id_ed25519_github`, displays the public key, then pauses for it to be added to GitHub as an **Authentication Key**. The script tests `ssh -T git@github.com` before cloning.
 
 ### Important
 
 Never copy the Mac's private SSH key into a VM.
 
-| Key            | Location | Purpose     |
-| -------------- | -------- | ----------- |
-| Mac SSH key    | Mac      | Mac → VM    |
-| Project VM key | VM       | VM → GitHub |
+| Key                       | Location    | Purpose          |
+| ------------------------- | ----------- | ---------------- |
+| Mac SSH key               | Mac         | Mac → VM         |
+| Proxmox administration key| Proxmox     | Proxmox → VM     |
+| Project GitHub key        | Project VM  | VM → GitHub      |
 
 ---
 
 ## 9. Project Setup
 
-Create the project directory:
+Run the project scripts from the repository root on Proxmox:
 
 ```bash
-mkdir -p ~/Projects
+cd ~/proxmox-local
 ```
 
-Clone the repository:
+### 9.1 Setup Script
+
+`setup-dev-project.sh` configures Git for the VM and supports two modes.
+
+For a new local-only project, omit the GitHub repository:
 
 ```bash
-cd ~/Projects
-git clone git@github.com:<owner>/<repository>.git
+./scripts/setup-dev-project.sh 153 mon-projet 192.168.1.153
 ```
 
-Enter the project:
+It creates `/home/sysadmin/Projects/mon-projet` and initializes an empty Git repository on the `main` branch. It does not create a GitHub SSH key or an initial commit.
+
+For an existing GitHub repository, provide the optional fourth argument:
 
 ```bash
-cd ~/Projects/<project>
+./scripts/setup-dev-project.sh 153 mon-projet 192.168.1.153 maquejp/mon-projet
 ```
 
-Install dependencies:
+This configures the VM's dedicated GitHub SSH key, verifies GitHub authentication, and clones the repository into `/home/sysadmin/Projects/mon-projet`. When a new key is created, add the displayed public key to GitHub before continuing. Private repositories are supported when the key has access.
+
+### 9.2 Cleanup Script
+
+When a development VM is no longer needed, remove it and its Proxmox SSH host keys with:
 
 ```bash
-npm ci
+./scripts/cleanup-dev-vm.sh 153 mon-projet 192.168.1.153 maquejp/mon-projet
 ```
 
-Verify the project:
+The fourth argument is optional. The script stops and purges the VM, then removes its IP address from `/root/.ssh/known_hosts` on Proxmox.
 
-```bash
-npm run build
-```
+It also reminds you to complete the two manual cleanup steps that cannot safely be automated from Proxmox:
+
+- remove the VM IP from the Mac's `~/.ssh/known_hosts`;
+- delete the VM's GitHub SSH key and, if appropriate, its test repository.
 
 ---
 
 ## 10. Git Configuration
 
-Configure Git globally inside each VM:
-
-```bash
-git config --global user.name "Jean-Philippe Maquestiaux"
-```
-
-Configure the GitHub-associated email:
-
-```bash
-git config --global user.email "<github-associated-email>"
-```
+`setup-dev-project.sh` configures the global Git identity in the VM.
 
 Verify:
 
@@ -491,7 +482,7 @@ Verify:
 git config --global --list
 ```
 
-The actual email address should not be stored in this runbook.
+Update the script if the Git identity changes.
 
 ---
 
@@ -669,79 +660,37 @@ Status: operational.
 On Proxmox:
 
 ```bash
-/root/create-dev-vm.sh <VMID> <project> <IP>
+cd ~/proxmox-local
+./scripts/create-dev-vm.sh 153 new-project 192.168.1.153
 ```
 
-Example:
+### 2. Set up the project
+
+For a new local project:
 
 ```bash
-/root/create-dev-vm.sh 153 new-project 192.168.1.153
+./scripts/setup-dev-project.sh 153 new-project 192.168.1.153
 ```
 
-### 2. Connect from the Mac
+For an existing GitHub repository:
 
 ```bash
-ssh sysadmin@<IP>
+./scripts/setup-dev-project.sh 153 new-project 192.168.1.153 maquejp/new-project
 ```
 
-### 3. Create the project directory
+### 3. Install dependencies
 
 ```bash
-mkdir -p ~/Projects
+ssh sysadmin@192.168.1.153 'cd /home/sysadmin/Projects/new-project && npm ci'
 ```
 
-### 4. Create the project-specific GitHub key
+### 4. Build the project
 
 ```bash
-ssh-keygen -t ed25519 -C "<project>@proxmox"
+ssh sysadmin@192.168.1.153 'cd /home/sysadmin/Projects/new-project && npm run build'
 ```
 
-### 5. Display the public key
-
-```bash
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add it to GitHub as:
-
-```text
-Proxmox VM - <project>
-```
-
-### 6. Test GitHub authentication
-
-```bash
-ssh -T git@github.com
-```
-
-### 7. Clone the project
-
-```bash
-cd ~/Projects
-git clone git@github.com:<owner>/<repository>.git
-```
-
-### 8. Install dependencies
-
-```bash
-cd ~/Projects/<project>
-npm ci
-```
-
-### 9. Build the project
-
-```bash
-npm run build
-```
-
-### 10. Configure Git
-
-```bash
-git config --global user.name "Jean-Philippe Maquestiaux"
-git config --global user.email "<github-associated-email>"
-```
-
-### 11. Configure Vite
+### 5. Configure Vite
 
 For Vite projects:
 
@@ -751,14 +700,14 @@ server: {
 },
 ```
 
-### 12. Open the Vite port
+### 6. Open the Vite port
 
 ```bash
 sudo firewall-cmd --permanent --add-port=5173/tcp
 sudo firewall-cmd --reload
 ```
 
-### 13. Configure the Mac
+### 7. Configure the Mac
 
 Add the VM to `~/.ssh/config`:
 
@@ -774,7 +723,7 @@ Test:
 ssh <project>
 ```
 
-### 14. Connect with VS Code
+### 8. Connect with VS Code
 
 Use:
 
@@ -845,7 +794,7 @@ ssh -T git@github.com
 Check the VM's public key:
 
 ```bash
-cat ~/.ssh/id_ed25519.pub
+cat ~/.ssh/id_ed25519_github.pub
 ```
 
 Ensure that this exact public key has been added to GitHub.
@@ -987,8 +936,8 @@ Proxmox
 ### Database VM
 
 ```text
-databases
-  IP:       192.168.1.129
+100  databases
+     192.168.1.129
 ```
 
 ### Project VMs
@@ -1018,6 +967,9 @@ Vite: 5173/tcp
 Mac → VM
     Mac SSH key
 
+Proxmox → VM
+    Proxmox administration key
+
 VM → GitHub
     Dedicated project SSH key
 ```
@@ -1031,7 +983,25 @@ VM → GitHub
 ### Create a new VM
 
 ```bash
-/root/create-dev-vm.sh <VMID> <project> <IP>
+./scripts/create-dev-vm.sh <VMID> <project> <IP>
+```
+
+### Set up a local project
+
+```bash
+./scripts/setup-dev-project.sh <VMID> <project> <IP>
+```
+
+### Set up a GitHub project
+
+```bash
+./scripts/setup-dev-project.sh <VMID> <project> <IP> <github-repo>
+```
+
+### Remove a development VM
+
+```bash
+./scripts/cleanup-dev-vm.sh <VMID> <project> <IP> [github-repo]
 ```
 
 ### Connect
