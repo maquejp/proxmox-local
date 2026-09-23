@@ -4,7 +4,8 @@ set -euo pipefail
 
 TEMPLATE_ID=198
 GATEWAY="192.168.1.1"
-SSH_KEY="/root/id_ed25519.pub"
+MAC_SSH_KEY="/root/id_ed25519.pub"
+VM_ADMIN_SSH_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
 
 VMID="${1:-}"
 VM_NAME="${2:-}"
@@ -33,8 +34,13 @@ if ! qm status "$TEMPLATE_ID" &>/dev/null; then
     exit 1
 fi
 
-if [[ ! -f "$SSH_KEY" ]]; then
-    echo "Error: SSH public key not found: $SSH_KEY"
+if [[ ! -f "$MAC_SSH_KEY" ]]; then
+    echo "Error: SSH public key not found: $MAC_SSH_KEY"
+    exit 1
+fi
+
+if [[ ! -f "$VM_ADMIN_SSH_KEY" ]]; then
+    echo "Error: SSH public key not found: $VM_ADMIN_SSH_KEY"
     exit 1
 fi
 
@@ -45,13 +51,19 @@ fi
 
 echo "Creating VM $VMID ($VM_NAME) with IP $VM_IP..."
 
+SSH_KEYS_FILE="$(mktemp)"
+
+cat "$MAC_SSH_KEY" "$VM_ADMIN_SSH_KEY" > "$SSH_KEYS_FILE"
+
+trap 'rm -f "$SSH_KEYS_FILE"' EXIT
+
 qm clone "$TEMPLATE_ID" "$VMID" \
     --name "$VM_NAME" \
     --full 1
 
 qm set "$VMID" \
     --ciuser sysadmin \
-    --sshkeys "$SSH_KEY" \
+    --sshkeys "$SSH_KEYS_FILE" \
     --ipconfig0 "ip=${VM_IP}/24,gw=${GATEWAY}"
 
 qm start "$VMID"
