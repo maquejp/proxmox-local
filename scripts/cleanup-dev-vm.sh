@@ -2,11 +2,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+source "${SCRIPT_DIR}/common.sh"
+
 VMID="${1:-}"
 PROJECT_NAME="${2:-}"
 VM_IP="${3:-}"
 GITHUB_REPO="${4:-}"
-KNOWN_HOSTS="/root/.ssh/known_hosts"
 
 usage() {
     echo "Usage: $0 <vmid> <project-name> <vm-ip> [github-repo]"
@@ -16,15 +19,8 @@ usage() {
 
 [[ -n "$VMID" && -n "$PROJECT_NAME" && -n "$VM_IP" ]] || usage
 
-if ! [[ "$VMID" =~ ^[0-9]+$ ]]; then
-    echo "Error: VMID must be numeric."
-    exit 1
-fi
-
-if ! [[ "$VM_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    echo "Error: invalid IPv4 address: $VM_IP"
-    exit 1
-fi
+validate_vmid "$VMID"
+validate_ip "$VM_IP"
 
 if qm status "$VMID" &>/dev/null; then
     echo "Stopping VM $VMID..."

@@ -23,7 +23,8 @@
   - [8.3 VM → GitHub](#83-vm--github)
 - [9. Project Setup](#9-project-setup)
   - [9.1 Setup Script](#91-setup-script)
-  - [9.2 Cleanup Script](#92-cleanup-script)
+  - [9.2 React / Vite Environment Setup](#92-react--vite-environment-setup)
+  - [9.3 Cleanup Script](#93-cleanup-script)
 - [10. Git Configuration](#10-git-configuration)
 - [11. Vite Development Server](#11-vite-development-server)
 - [12. Firewall](#12-firewall)
@@ -419,11 +420,11 @@ In GitHub mode, `setup-dev-project.sh` creates it when needed at `~/.ssh/id_ed25
 
 Never copy the Mac's private SSH key into a VM.
 
-| Key                       | Location    | Purpose          |
-| ------------------------- | ----------- | ---------------- |
-| Mac SSH key               | Mac         | Mac → VM         |
-| Proxmox administration key| Proxmox     | Proxmox → VM     |
-| Project GitHub key        | Project VM  | VM → GitHub      |
+| Key                        | Location   | Purpose      |
+| -------------------------- | ---------- | ------------ |
+| Mac SSH key                | Mac        | Mac → VM     |
+| Proxmox administration key | Proxmox    | Proxmox → VM |
+| Project GitHub key         | Project VM | VM → GitHub  |
 
 ---
 
@@ -455,7 +456,24 @@ For an existing GitHub repository, provide the optional fourth argument:
 
 This configures the VM's dedicated GitHub SSH key, verifies GitHub authentication, and clones the repository into `/home/sysadmin/Projects/mon-projet`. When a new key is created, add the displayed public key to GitHub before continuing. Private repositories are supported when the key has access.
 
-### 9.2 Cleanup Script
+### 9.2 React / Vite Environment Setup
+
+`setup-react-vite.sh` automates preparing a React + Vite development environment:
+
+```bash
+./scripts/setup-react-vite.sh 153 mon-projet 192.168.1.153
+```
+
+It performs the following tasks:
+
+- Verifies Node.js and npm in the VM.
+- Scaffolds a new React + Vite (TypeScript) project if `package.json` is missing.
+- Verifies and configures `vite.config.ts` to ensure `server.host` listens on `0.0.0.0` (accessible from your Mac).
+- Installs dependencies (`npm ci` if lockfile exists, or `npm install`).
+- Runs a test build (`npm run build`).
+- Opens firewall TCP port `5173` via `firewalld`.
+
+### 9.3 Cleanup Script
 
 When a development VM is no longer needed, remove it and its Proxmox SSH host keys with:
 
@@ -678,36 +696,15 @@ For an existing GitHub repository:
 ./scripts/setup-dev-project.sh 153 new-project 192.168.1.153 maquejp/new-project
 ```
 
-### 3. Install dependencies
+### 3. Prepare the environment (React / Vite)
 
 ```bash
-ssh sysadmin@192.168.1.153 'cd /home/sysadmin/Projects/new-project && npm ci'
+./scripts/setup-react-vite.sh 153 new-project 192.168.1.153
 ```
 
-### 4. Build the project
+This automates dependency installation, Vite `0.0.0.0` host configuration, test build, and firewall port opening (`5173/tcp`).
 
-```bash
-ssh sysadmin@192.168.1.153 'cd /home/sysadmin/Projects/new-project && npm run build'
-```
-
-### 5. Configure Vite
-
-For Vite projects:
-
-```ts
-server: {
-  host: '0.0.0.0',
-},
-```
-
-### 6. Open the Vite port
-
-```bash
-sudo firewall-cmd --permanent --add-port=5173/tcp
-sudo firewall-cmd --reload
-```
-
-### 7. Configure the Mac
+### 4. Configure the Mac
 
 Add the VM to `~/.ssh/config`:
 
@@ -723,7 +720,7 @@ Test:
 ssh <project>
 ```
 
-### 8. Connect with VS Code
+### 5. Connect with VS Code
 
 Use:
 
@@ -996,6 +993,12 @@ VM → GitHub
 
 ```bash
 ./scripts/setup-dev-project.sh <VMID> <project> <IP> <github-repo>
+```
+
+### Prepare a React / Vite project
+
+```bash
+./scripts/setup-react-vite.sh <VMID> <project> <IP>
 ```
 
 ### Remove a development VM

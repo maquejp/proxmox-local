@@ -2,16 +2,14 @@
 
 set -euo pipefail
 
-VM_USER="sysadmin"
-PROJECTS_DIR="/home/${VM_USER}/Projects"
-VM_ADMIN_SSH_KEY="/root/.ssh/id_ed25519_vm_admin"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 VMID="${1:-}"
 PROJECT_NAME="${2:-}"
 VM_IP="${3:-}"
 GITHUB_REPO="${4:-}"
-
-SSH_TARGET="${VM_USER}@${VM_IP}"
 
 usage() {
     echo "Usage: $0 <vmid> <project-name> <vm-ip> [github-repo]"
@@ -23,68 +21,16 @@ usage() {
 
 [[ -n "$VMID" && -n "$PROJECT_NAME" && -n "$VM_IP" ]] || usage
 
-if ! [[ "$VMID" =~ ^[0-9]+$ ]]; then
-    echo "Error: VMID must be numeric."
-    exit 1
-fi
+validate_vmid "$VMID"
+validate_ip "$VM_IP"
+ensure_vm_exists "$VMID"
+ensure_vm_running "$VMID"
+ensure_admin_key_exists
 
-if ! qm status "$VMID" &>/dev/null; then
-    echo "Error: VMID $VMID does not exist."
-    exit 1
-fi
+wait_for_ssh "$VM_IP"
 
-VM_STATUS="$(qm status "$VMID" | awk '{print $2}')"
-
-if [[ "$VM_STATUS" != "running" ]]; then
-    echo "Error: VM $VMID is not running."
-    echo "Start it with: qm start $VMID"
-    exit 1
-fi
-
-if ! [[ "$VM_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-    echo "Error: invalid IPv4 address: $VM_IP"
-    exit 1
-fi
-
-if [[ ! -f "$VM_ADMIN_SSH_KEY" ]]; then
-    echo "Error: VM admin SSH private key not found: $VM_ADMIN_SSH_KEY"
-    exit 1
-fi
-
-echo "Waiting for SSH on ${SSH_TARGET}..."
-
-SSH_READY=false
-
-for _ in {1..30}; do
-    if ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o ConnectTimeout=2 \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" true 2>/dev/null; then
-        SSH_READY=true
-        break
-    fi
-
-    sleep 2
-done
-
-if [[ "$SSH_READY" != true ]]; then
-    echo "Error: SSH is not available on ${SSH_TARGET}."
-    exit 1
-fi
-
-echo "SSH is available."
-
-echo "Configuring project..."
-
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
+echo "Configuring Git identity..."
+ssh_vm "$VM_IP" \
     "git config --global user.name 'Jean-Philippe Maquestiaux' && \
      git config --global user.email 'maquejp@gmail.com' && \
      mkdir -p '$PROJECTS_DIR'"
@@ -93,14 +39,7 @@ PROJECT_DIR="${PROJECTS_DIR}/${PROJECT_NAME}"
 
 if [[ -z "$GITHUB_REPO" ]]; then
     echo "Creating local Git project..."
-
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
-        "mkdir -p '$PROJECT_DIR' && git -C '$PROJECT_DIR' init --initial-branch=main"
+    ssh_vm "$VM_IP" "mkdir -p '$PROJECT_DIR' && git -C '$PROJECT_DIR' init --initial-branch=main"
 
     echo
     echo "Project setup complete:"
@@ -113,32 +52,12 @@ if [[ -z "$GITHUB_REPO" ]]; then
 fi
 
 echo "Configuring GitHub SSH key..."
+ssh_vm "$VM_IP" 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
 
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
-    'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
-
-GITHUB_KEY_EXISTS="$(
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
-        '[[ -f ~/.ssh/id_ed25519_github ]] && echo yes || echo no'
-)"
+GITHUB_KEY_EXISTS="$(ssh_vm "$VM_IP" '[[ -f ~/.ssh/id_ed25519_github ]] && echo yes || echo no')"
 
 if [[ "$GITHUB_KEY_EXISTS" == "no" ]]; then
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
+    ssh_vm "$VM_IP" \
         'ssh-keygen -t ed25519 \
             -C "github@$(hostname)" \
             -f ~/.ssh/id_ed25519_github \
@@ -150,13 +69,7 @@ if [[ "$GITHUB_KEY_EXISTS" == "no" ]]; then
     echo "Add the following public key to your GitHub account:"
     echo
 
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
-        'cat ~/.ssh/id_ed25519_github.pub'
+    ssh_vm "$VM_IP" 'cat ~/.ssh/id_ed25519_github.pub'
 
     echo
     echo "GitHub → Settings → SSH and GPG keys → New SSH key"
@@ -166,12 +79,7 @@ fi
 
 # SSH configuration is deliberately explicit so Git always uses
 # the project VM's dedicated GitHub key.
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
+ssh_vm "$VM_IP" \
     'cat > ~/.ssh/config << "EOF"
 Host github.com
     HostName github.com
@@ -182,42 +90,22 @@ EOF
 chmod 600 ~/.ssh/config'
 
 # Trust GitHub's host key on a fresh VM.
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
+ssh_vm "$VM_IP" \
     'touch ~/.ssh/known_hosts && \
      ssh-keygen -F github.com -f ~/.ssh/known_hosts >/dev/null || \
      ssh-keyscan -H github.com >> ~/.ssh/known_hosts'
 
 echo "Testing GitHub authentication..."
-
-GITHUB_TEST="$(
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
-        'ssh -T git@github.com 2>&1 || true'
-)"
+GITHUB_TEST="$(ssh_vm "$VM_IP" 'ssh -T git@github.com 2>&1 || true')"
 
 if [[ "$GITHUB_TEST" != *"successfully authenticated"* ]]; then
     echo
-    echo "Error: GitHub authentication failed."
+    echo "Error: GitHub authentication failed." >&2
     echo
-    echo "Public key:"
-    ssh \
-        -i "$VM_ADMIN_SSH_KEY" \
-        -o IdentitiesOnly=yes \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=no \
-        "$SSH_TARGET" \
-        'cat ~/.ssh/id_ed25519_github.pub'
+    echo "Public key:" >&2
+    ssh_vm "$VM_IP" 'cat ~/.ssh/id_ed25519_github.pub' >&2
     echo
-    echo "Make sure this key is registered in GitHub."
+    echo "Make sure this key is registered in GitHub." >&2
     exit 1
 fi
 
@@ -226,13 +114,7 @@ echo "GitHub authentication OK."
 GITHUB_URL="git@github.com:${GITHUB_REPO}.git"
 
 echo "Cloning project..."
-
-ssh \
-    -i "$VM_ADMIN_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o BatchMode=yes \
-    -o StrictHostKeyChecking=no \
-    "$SSH_TARGET" \
+ssh_vm "$VM_IP" \
     "if [[ -d '$PROJECT_DIR/.git' ]]; then
          echo 'Project already cloned: $PROJECT_DIR'
      elif [[ -e '$PROJECT_DIR' ]]; then
