@@ -6,18 +6,10 @@ set -euo pipefail
 # Proxmox Development VM - Developer Shell Setup
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Defaults
-# ------------------------------------------------------------------------------
-
 DEV_USER="dev"
 SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
 
 EZA_VERSION="0.23.5"
-
-# ------------------------------------------------------------------------------
-# Arguments
-# ------------------------------------------------------------------------------
 
 VMID=""
 
@@ -69,12 +61,14 @@ validate_ssh_key() {
 get_vm_ip() {
     local ip
 
-    ip=$(qm config "$VMID" |
+    ip=$(
+        qm config "$VMID" |
         awk -F'ip=' '/^ipconfig0:/ {
             split($2, a, ",")
             print a[1]
         }' |
-        cut -d/ -f1)
+        cut -d/ -f1
+    )
 
     if [[ -z "$ip" ]]; then
         error "No static IP configured for VM $VMID"
@@ -119,6 +113,66 @@ run_remote() {
         "$@"
 }
 
+# ==============================================================================
+# Package installation
+# ==============================================================================
+
+install_system_packages() {
+
+    echo "Updating Rocky Linux packages..."
+
+    run_remote bash -s <<'REMOTE'
+
+set -euo pipefail
+
+if command -v dnf >/dev/null 2>&1; then
+
+    sudo dnf upgrade -y
+
+else
+
+    echo "Error: dnf not found." >&2
+    exit 1
+
+fi
+
+REMOTE
+
+    echo "Configuring Rocky Linux repositories..."
+
+    run_remote bash -s <<'REMOTE'
+
+set -euo pipefail
+
+sudo dnf config-manager --enable crb
+
+if ! rpm -q epel-release >/dev/null 2>&1; then
+    sudo dnf install -y epel-release
+fi
+
+REMOTE
+
+    echo "Installing shell packages..."
+
+    run_remote bash -s <<'REMOTE'
+
+set -euo pipefail
+
+packages=()
+
+command -v git >/dev/null 2>&1 || packages+=(git)
+command -v bat >/dev/null 2>&1 || packages+=(bat)
+command -v rg >/dev/null 2>&1 || packages+=(ripgrep)
+
+if [[ ${#packages[@]} -gt 0 ]]; then
+    sudo dnf install -y "${packages[@]}"
+else
+    echo "git, bat and ripgrep already installed."
+fi
+
+REMOTE
+}
+
 install_eza() {
     echo "Installing eza..."
 
@@ -146,7 +200,7 @@ curl -fsSL \
 tar -xzf "$tmp_dir/eza.tar.gz" -C "$tmp_dir"
 
 install -m 0755 \
-    "$tmp_dir/eza_x86_64-unknown-linux-gnu" \
+    "$tmp_dir/eza" \
     "$BIN_DIR/eza"
 
 echo "eza v${EZA_VERSION} installed."
@@ -175,6 +229,10 @@ echo "Starship installed."
 REMOTE
 }
 
+# ==============================================================================
+# Shell configuration
+# ==============================================================================
+
 configure_path() {
     echo "Configuring PATH..."
 
@@ -182,16 +240,50 @@ configure_path() {
 set -euo pipefail
 
 BASHRC="$HOME/.bashrc"
-PATH_BLOCK='
-# Local user binaries
-if [[ -d "$HOME/.local/bin" ]]; then
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-'
 
-if ! grep -Fq '# Local user binaries' "$BASHRC"; then
-    printf '%s\n' "$PATH_BLOCK" >> "$BASHRC"
+python3 - "$BASHRC" <<'PY'
+from pathlib import Path
+import sys
+
+bashrc = Path(sys.argv[1])
+content = bashrc.read_text()
+
+marker = "# Local user binaries"
+
+if marker in content:
+    before, rest = content.split(marker, 1)
+
+    if "\n# Load development aliases" in rest:
+        rest = rest.split("\n# Load development aliases", 1)[0]
+
+    block = """# Local user binaries
+if [[ -d "$HOME/.local/bin" ]]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
 fi
+"""
+
+    aliases_marker = "# Load development aliases"
+
+    if aliases_marker in content:
+        suffix = content[content.index(aliases_marker):]
+        bashrc.write_text(before + block + "\n" + suffix)
+    else:
+        bashrc.write_text(before + block + "\n")
+else:
+    block = """# Local user binaries
+if [[ -d "$HOME/.local/bin" ]]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+fi
+"""
+
+    bashrc.write_text(content.rstrip() + "\n\n" + block)
+PY
 REMOTE
 }
 
@@ -208,10 +300,109 @@ BASHRC="$HOME/.bashrc"
 mkdir -p "$CONFIG_DIR"
 
 cat > "$ALIASES_FILE" <<'EOF'
+# ==============================================================================
 # Directory listing
-alias l='eza -l  --icons'
-alias la='eza -a  --icons'
-alias ll='eza -lah  --icons'
+# ==============================================================================
+
+alias l='eza -lh --icons'
+alias ls='eza --icons'
+alias ll='eza -lh --icons --git'
+alias la='eza -lah --icons --git'
+alias tree='eza --tree --icons'
+
+# ==============================================================================
+# Git
+# ==============================================================================
+
+alias g='git'
+alias ga='git add'
+alias gaa='git add .'
+alias gau='git add -u'
+alias gb='git branch'
+alias gbd='git branch -d'
+alias gbD='git branch -D'
+alias gc='git commit'
+alias gcm='git commit -m'
+alias gca='git commit --amend'
+alias gcan='git commit --amend --no-edit'
+alias gco='git checkout'
+alias gcob='git checkout -b'
+alias gd='git diff'
+alias gdm='git diff main'
+alias gds='git diff --staged'
+alias gf='git fetch'
+alias gfp='git fetch && git pull'
+alias gl='git log --oneline -10'
+alias glg='git log --all --graph --oneline --decorate'
+alias gm='git merge'
+alias gmm='git merge main'
+alias gp='git pull'
+alias gps='git push'
+alias gpsu='git push -u origin HEAD'
+alias grb='git rebase'
+alias grbm='git rebase main'
+alias gr='git restore'
+alias grs='git restore --staged'
+alias gs='git status'
+alias gst='git stash'
+alias gstp='git stash pop'
+alias gstl='git stash list'
+
+# ==============================================================================
+# Navigation
+# ==============================================================================
+
+alias ..='cd ..'
+alias ...='cd ../../'
+alias ....='cd ../../..'
+alias cd-='cd -'
+
+# ==============================================================================
+# Common utilities
+# ==============================================================================
+
+alias c='clear'
+alias du='du -sh'
+alias df='df -h'
+alias path='echo $PATH | tr ":" "\n"'
+alias hist='history | grep'
+alias serve='python3 -m http.server'
+alias venv='python3 -m venv venv && source venv/bin/activate'
+alias py='python3'
+alias bcat='bat'
+
+# ==============================================================================
+# Networking
+# ==============================================================================
+
+alias myip='curl ifconfig.me'
+alias ports='ss -tulpn'
+alias pingg='ping google.com'
+
+# ==============================================================================
+# Node / npm
+# ==============================================================================
+
+alias npm-global='npm list -g --depth=0'
+alias ni='npm install'
+alias nid='npm install --save-dev'
+alias nis='npm install --save'
+alias nun='npm uninstall'
+alias nci='npm ci'
+alias npub='npm publish'
+alias nls='npm list --depth=0'
+alias nr='npm run'
+alias nrb='npm run build'
+alias nrs='npm run start'
+alias ns='npm start'
+alias nt='npm test'
+alias nv='node -v && npm -v'
+alias npxx='npx'
+alias cra='npx create-react-app'
+alias initnode='npm init -y'
+alias cleannode='rm -rf node_modules package-lock.json'
+alias upnode='npm update'
+alias servejs='npx serve'
 EOF
 
 if ! grep -Fq '# Load development aliases' "$BASHRC"; then
@@ -238,8 +429,7 @@ BASHRC="$HOME/.bashrc"
 
 mkdir -p "$CONFIG_DIR"
 
-if [[ ! -f "$STARSHIP_CONFIG" ]]; then
-    cat > "$STARSHIP_CONFIG" <<'EOF'
+cat > "$STARSHIP_CONFIG" <<'EOF'
 "$schema" = 'https://starship.rs/config-schema.json'
 
 add_newline = false
@@ -256,7 +446,6 @@ truncation_length = 3
 [git_branch]
 symbol = 'git:'
 EOF
-fi
 
 if ! grep -Fq '# Initialize Starship' "$BASHRC"; then
     cat >> "$BASHRC" <<'EOF'
@@ -310,13 +499,18 @@ validate_vm_running
 validate_ssh
 
 # ==============================================================================
-# Shell setup
+# Setup
 # ==============================================================================
 
 echo
-echo "Setting up developer shell..."
+echo "Developer shell setup target:"
+echo "  VM ID   : $VMID"
+echo "  VM IP   : $VM_IP"
+echo "  User    : $DEV_USER"
+echo "  SSH key : $SSH_PRIVATE_KEY"
 echo
 
+install_system_packages
 install_eza
 install_starship
 configure_path
@@ -333,6 +527,8 @@ echo "  VM ID   : $VMID"
 echo "  VM IP   : $VM_IP"
 echo "  User    : $DEV_USER"
 echo "  eza     : v${EZA_VERSION}"
+echo "  bat     : installed"
+echo "  rg      : installed"
 echo "  Starship: installed"
 echo
 echo "Reconnect to the VM to load the new shell configuration."
