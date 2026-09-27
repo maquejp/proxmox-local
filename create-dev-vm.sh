@@ -129,6 +129,52 @@ validate_ip_not_configured() {
 }
 
 # ------------------------------------------------------------------------------
+# Validate Rocky Linux source image
+# ------------------------------------------------------------------------------
+
+validate_rocky_image() {
+    if [[ ! -f "$ROCKY_IMAGE" ]]; then
+        echo "Error: Rocky Linux image not found: $ROCKY_IMAGE" >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Validate CPU core count
+# ------------------------------------------------------------------------------
+
+validate_cores() {
+    if [[ ! "$CORES" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: invalid CPU core count: $CORES" >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Validate disk size
+# ------------------------------------------------------------------------------
+
+validate_disk() {
+    if [[ ! "$DISK" =~ ^[1-9][0-9]*G$ ]]; then
+        echo "Error: invalid disk size: $DISK" >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Validate SSH public key
+# ------------------------------------------------------------------------------
+
+validate_ssh_key() {
+    local key="/root/.ssh/id_ed25519.pub"
+
+    if [[ ! -f "$key" ]]; then
+        echo "Error: SSH public key not found: $key" >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
 # Convert memory value to MiB for qm
 #
 # Examples:
@@ -169,10 +215,59 @@ create_vm() {
         --cores "$CORES" \
         --cpu "$CPU" \
         --net0 "virtio,bridge=$BRIDGE,firewall=1" \
-        --ostype "$OS_TYPE"
+        --ostype "$OS_TYPE" \
+        --agent enabled=1
 
     echo "VM $VMID created."
 }
+
+# ------------------------------------------------------------------------------
+# Disk provisioning
+# ------------------------------------------------------------------------------
+
+configure_disk() {
+    echo "Importing Rocky Linux image..."
+
+    qm importdisk \
+        "$VMID" \
+        "$ROCKY_IMAGE" \
+        "$STORAGE"
+
+    echo "Configuring VM disk..."
+
+    qm set "$VMID" \
+        --scsihw virtio-scsi-single
+
+    qm set "$VMID" \
+        --scsi0 "${STORAGE}:vm-${VMID}-disk-0,iothread=1"
+
+    qm resize "$VMID" scsi0 "$DISK"
+
+    qm set "$VMID" \
+        --boot "order=scsi0"
+
+    echo "Disk configured."
+}
+
+# ------------------------------------------------------------------------------
+# Cloud-Init configuration
+# ------------------------------------------------------------------------------
+
+configure_cloud_init() {
+    echo "Configuring Cloud-Init..."
+
+    qm set "$VMID" \
+        --ide2 "$STORAGE:cloudinit" \
+        --ciuser dev \
+        --sshkeys /root/.ssh/id_ed25519.pub \
+        --ipconfig0 "ip=${IP}/24,gw=${GATEWAY}"
+
+    qm cloudinit update "$VMID"
+
+    echo "Cloud-Init configured."
+}
+
+
 
 # ==============================================================================
 # Parse command-line arguments
@@ -249,6 +344,10 @@ fi
 validate_vmid
 validate_ip "$IP"
 validate_ip_not_configured "$IP"
+validate_rocky_image
+validate_cores
+validate_disk
+validate_ssh_key
 
 MEMORY_MIB=$(memory_to_mib "$MEMORY")
 
@@ -268,3 +367,5 @@ echo "Disk    : $DISK"
 # ==============================================================================
 
 create_vm
+configure_disk
+configure_cloud_init

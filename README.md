@@ -23,13 +23,21 @@ The environment is divided into two main responsibilities:
 
 ```text
 create-dev-vm.sh
+
         │
+
         │ VM provisioning
+
         ▼
+
    Rocky Linux VM
+
         │
+
         │ Project setup
+
         ▼
+
 setup-dev-project.sh
 ```
 
@@ -118,9 +126,9 @@ For example:
 ```text
 VM ID    IP address
 -------------------
-200      192.168.1.200
 201      192.168.1.201
 202      192.168.1.202
+203      192.168.1.203
 ```
 
 The provisioning script validates that:
@@ -259,7 +267,7 @@ It does not currently aim to provide:
 
 🚧 **Work in progress**
 
-The following has been validated manually:
+The following has been validated:
 
 - Rocky Linux GenericCloud image
 - Cloud-Init configuration
@@ -271,15 +279,44 @@ The following has been validated manually:
 - VM ID validation
 - IP address validation
 - configurable CPU, memory and disk defaults
+- automated Rocky Linux disk import
+- automated disk configuration
+- automated Cloud-Init configuration
+- automated SSH key configuration
+- automated static network configuration
+- automated QEMU Guest Agent configuration
+- automated VM provisioning
 
-`create-dev-vm.sh` is currently being implemented incrementally.
+`create-dev-vm.sh` has been validated by creating a development VM end-to-end.
 
-The next steps are to complete automated:
+The resulting VM has been verified for:
 
-1. Rocky Linux disk import
-2. disk configuration
-3. Cloud-Init configuration
-4. SSH key configuration
-5. static network configuration
-6. QEMU Guest Agent configuration
-7. VM boot and validation
+- correct Proxmox configuration
+- correct disk and storage configuration
+- Cloud-Init user configuration
+- Cloud-Init network configuration
+- static IP connectivity
+- SSH access using the configured public key
+- QEMU Guest Agent availability
+
+The current provisioning workflow is therefore:
+
+1. Validate VM parameters
+2. Create the Proxmox VM
+3. Import the Rocky Linux GenericCloud image
+4. Configure the VM disk
+5. Configure Cloud-Init
+6. Configure SSH key authentication
+7. Configure the static network
+8. Enable QEMU Guest Agent
+
+The resulting VM can then be booted and validated.
+
+The next major step is to implement `setup-dev-project.sh`.
+
+This script will prepare a development environment inside an existing VM and must support both:
+
+- existing Git repositories
+- new projects that do not yet have a Git repository
+
+The project setup workflow will remain separate from VM provisioning.
