@@ -26,6 +26,9 @@ BIOS="seabios"
 CPU="host"
 OS_TYPE="l26"
 
+# SSH key used by the Proxmox host to access development VMs.
+SSH_PUBLIC_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
+
 # Reusable Rocky Linux Cloud-Init source image.
 # This file is imported into local-lvm for each new development VM.
 ROCKY_IMAGE="/var/lib/vz/template/qcow2/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2"
@@ -65,7 +68,7 @@ Optional:
 Example:
   $0 --name taskmanager --id 201 --ip 192.168.1.201
 
-  $0 --name big-project --id 202 --ip 192.168.1.202 \\
+  $0 --name big-project --id 202 --ip 192.168.1.202 \
      --cores 8 --memory 24G --disk 100G
 EOF
 }
@@ -102,8 +105,10 @@ validate_ip() {
     read -r o1 o2 o3 o4 <<< "$ip"
 
     if [[ -z "$o1" || -z "$o2" || -z "$o3" || -z "$o4" ]] ||
-       ! [[ "$o1" =~ ^[0-9]+$ && "$o2" =~ ^[0-9]+$ &&
-            "$o3" =~ ^[0-9]+$ && "$o4" =~ ^[0-9]+$ ]] ||
+       ! [[ "$o1" =~ ^[0-9]+$ &&
+            "$o2" =~ ^[0-9]+$ &&
+            "$o3" =~ ^[0-9]+$ &&
+            "$o4" =~ ^[0-9]+$ ]] ||
        (( o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255 )); then
         echo "Error: invalid IPv4 address: $ip" >&2
         exit 1
@@ -166,10 +171,13 @@ validate_disk() {
 # ------------------------------------------------------------------------------
 
 validate_ssh_key() {
-    local key="/root/.ssh/id_ed25519.pub"
+    if [[ ! -f "$SSH_PUBLIC_KEY" ]]; then
+        echo "Error: SSH public key not found: $SSH_PUBLIC_KEY" >&2
+        exit 1
+    fi
 
-    if [[ ! -f "$key" ]]; then
-        echo "Error: SSH public key not found: $key" >&2
+    if [[ ! -r "$SSH_PUBLIC_KEY" ]]; then
+        echo "Error: SSH public key is not readable: $SSH_PUBLIC_KEY" >&2
         exit 1
     fi
 }
@@ -259,15 +267,13 @@ configure_cloud_init() {
     qm set "$VMID" \
         --ide2 "$STORAGE:cloudinit" \
         --ciuser dev \
-        --sshkeys /root/.ssh/id_ed25519.pub \
+        --sshkeys "$SSH_PUBLIC_KEY" \
         --ipconfig0 "ip=${IP}/24,gw=${GATEWAY}"
 
     qm cloudinit update "$VMID"
 
     echo "Cloud-Init configured."
 }
-
-
 
 # ==============================================================================
 # Parse command-line arguments
@@ -276,40 +282,57 @@ configure_cloud_init() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --name)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --name requires a value" >&2
+                exit 1
+            }
             NAME="$2"
             shift 2
             ;;
-
         --id)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --id requires a value" >&2
+                exit 1
+            }
             VMID="$2"
             shift 2
             ;;
-
         --ip)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --ip requires a value" >&2
+                exit 1
+            }
             IP="$2"
             shift 2
             ;;
-
         --cores)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --cores requires a value" >&2
+                exit 1
+            }
             CORES="$2"
             shift 2
             ;;
-
         --memory)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --memory requires a value" >&2
+                exit 1
+            }
             MEMORY="$2"
             shift 2
             ;;
-
         --disk)
+            [[ $# -ge 2 ]] || {
+                echo "Error: --disk requires a value" >&2
+                exit 1
+            }
             DISK="$2"
             shift 2
             ;;
-
         -h|--help)
             usage
             exit 0
             ;;
-
         *)
             echo "Error: unknown option: $1" >&2
             usage >&2
