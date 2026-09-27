@@ -392,3 +392,8 @@ echo "Disk    : $DISK"
 create_vm
 configure_disk
 configure_cloud_init
+
+echo "Starting VM..."
+qm start "$VMID"
+
+echo "VM $VMID started."
