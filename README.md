@@ -9,10 +9,11 @@ The goal is to provide a simple, reproducible and maintainable way to create iso
 - **Rocky Linux by default**
 - Use another OS only when a project has a specific technical requirement
 - Provision VMs directly through scripts
-- Avoid Proxmox templates unless they become useful later
 - Use Cloud-Init for initial VM configuration
 - Use SSH keys instead of passwords
+- Use static IP addresses for predictable VM access
 - Keep VM provisioning separate from project setup
+- Avoid Proxmox templates unless they become useful later
 - Prefer simple and explicit configuration over automation complexity
 - Follow KISS, DRY and SOLID principles where applicable
 
@@ -23,11 +24,11 @@ The environment is divided into two main responsibilities:
 ```text
 create-dev-vm.sh
         │
-        │  VM provisioning
+        │ VM provisioning
         ▼
    Rocky Linux VM
         │
-        │  Project setup
+        │ Project setup
         ▼
 setup-dev-project.sh
 ```
@@ -39,11 +40,13 @@ setup-dev-project.sh
 It handles infrastructure-level concerns such as:
 
 - VM creation
-- CPU and memory
-- storage
-- network
+- CPU and memory allocation
+- VM disk
+- network configuration
+- static IP configuration
 - Cloud-Init
 - SSH access
+- QEMU Guest Agent
 - base operating system configuration
 
 It should not contain project-specific configuration.
@@ -57,6 +60,8 @@ A project may either:
 - start from an existing Git repository
 - start as a new project
 
+The script must therefore **not assume that a Git repository already exists**.
+
 Project-specific tooling and configuration should remain separate from the generic VM provisioning logic.
 
 ## Default Operating System
@@ -64,6 +69,10 @@ Project-specific tooling and configuration should remain separate from the gener
 The default operating system is:
 
 **Rocky Linux**
+
+Development VMs use the Rocky Linux GenericCloud image together with Cloud-Init.
+
+The Rocky image is used as the source disk and imported into the Proxmox VM storage when creating a VM.
 
 Other distributions may be supported when required by a specific project or technology.
 
@@ -75,6 +84,54 @@ Examples of legitimate reasons to use another OS could include:
 - testing a specific operating system
 
 The default should remain Rocky Linux whenever there is no technical reason to deviate from it.
+
+## VM Configuration
+
+The current default development VM configuration is:
+
+| Setting | Default |
+|---|---|
+| Operating system | Rocky Linux |
+| CPU | 6 cores |
+| Memory | 16 GB |
+| Disk | 60 GB |
+| Storage | `local-lvm` |
+| Network bridge | `vmbr0` |
+| Network | VirtIO |
+| IP configuration | Static IPv4 |
+| Gateway | `192.168.1.1` |
+| Machine type | `q35` |
+| BIOS | SeaBIOS |
+| CPU type | `host` |
+| Cloud-Init | Enabled |
+| QEMU Guest Agent | Enabled |
+| SSH authentication | SSH public key |
+
+The defaults can be overridden when creating a VM.
+
+## VM Naming and Addressing
+
+VM IDs and IP addresses are explicitly selected when creating a VM.
+
+For example:
+
+```text
+VM ID    IP address
+-------------------
+200      192.168.1.200
+201      192.168.1.201
+202      192.168.1.202
+```
+
+The provisioning script validates that:
+
+- the VM ID is valid and available
+- the IP address is valid
+- the IP address is not already configured on another VM
+
+The script does not automatically allocate VM IDs or IP addresses.
+
+This keeps the infrastructure predictable and easy to understand.
 
 ## Repository Structure
 
@@ -94,16 +151,47 @@ The structure may evolve as requirements become clearer.
 
 ### Create a development VM
 
+The minimum required parameters are:
+
+- VM name
+- VM ID
+- static IP address
+
+Example:
+
 ```bash
 ./create-dev-vm.sh \
-    --name demo-react-taskmanager \
+    --name taskmanager \
     --id 201 \
-    --cores 6 \
-    --memory 16G \
-    --disk 60G
+    --ip 192.168.1.201
+```
+
+This creates a VM using the default configuration:
+
+```text
+CPU:      6 cores
+Memory:   16 GB
+Disk:     60 GB
+IP:       192.168.1.201
+```
+
+Defaults can be overridden:
+
+```bash
+./create-dev-vm.sh \
+    --name big-project \
+    --id 202 \
+    --ip 192.168.1.202 \
+    --cores 8 \
+    --memory 24G \
+    --disk 100G
 ```
 
 ### Configure a project
+
+The project setup script will prepare a development environment inside an existing VM.
+
+The intended workflow is:
 
 ```bash
 ./setup-dev-project.sh \
@@ -111,7 +199,36 @@ The structure may evolve as requirements become clearer.
     --type react-express
 ```
 
-> The command-line interface is currently a design target and may change during implementation.
+A project may be initialized from an existing repository or created as a new project.
+
+The exact command-line interface is still being implemented.
+
+## Development Workflow
+
+The intended workflow is:
+
+```text
+1. Create VM
+       │
+       ▼
+2. Rocky Linux + Cloud-Init
+       │
+       ▼
+3. SSH into VM
+       │
+       ▼
+4. Setup project
+       │
+       ▼
+5. Clone or create project
+       │
+       ▼
+6. Develop
+```
+
+Development VMs are intended to be disposable.
+
+If a VM becomes unusable, it should be possible to recreate it rather than relying on undocumented manual configuration.
 
 ## Design Goals
 
@@ -121,7 +238,9 @@ The scripts should make it possible to:
 2. Recreate a VM without relying on undocumented manual steps.
 3. Keep infrastructure configuration independent from application projects.
 4. Make the resulting environment understandable and debuggable.
-5. Avoid unnecessary infrastructure tooling.
+5. Use predictable VM IDs and IP addresses.
+6. Keep the provisioning process simple.
+7. Avoid unnecessary infrastructure tooling.
 
 ## Non-Goals
 
@@ -136,8 +255,31 @@ It does not currently aim to provide:
 - automatic production deployment
 - a large collection of pre-built VM templates
 
-## Status
+## Current Status
 
-🚧 Work in progress.
+🚧 **Work in progress**
 
-The provisioning workflow and command-line interface are currently being designed.
+The following has been validated manually:
+
+- Rocky Linux GenericCloud image
+- Cloud-Init configuration
+- static IP configuration
+- SSH key authentication
+- QEMU Guest Agent
+- VM networking
+- DNS and Internet connectivity
+- VM ID validation
+- IP address validation
+- configurable CPU, memory and disk defaults
+
+`create-dev-vm.sh` is currently being implemented incrementally.
+
+The next steps are to complete automated:
+
+1. Rocky Linux disk import
+2. disk configuration
+3. Cloud-Init configuration
+4. SSH key configuration
+5. static network configuration
+6. QEMU Guest Agent configuration
+7. VM boot and validation
