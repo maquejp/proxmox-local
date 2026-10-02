@@ -13,6 +13,7 @@ The goal is to provide a simple, reproducible and maintainable way to create iso
 - Use SSH keys instead of passwords
 - Use static IP addresses for predictable VM access
 - Keep VM provisioning separate from project setup
+- Keep VM deletion separate from VM provisioning
 - Avoid Proxmox templates unless they become useful later
 - Prefer simple and explicit configuration over automation complexity
 - Follow KISS, DRY and SOLID principles where applicable
@@ -36,8 +37,23 @@ The environment is divided into separate responsibilities:
             | shell environment     | environment
             v                       v
        Developer tools        Application stack
+                                   
+                    |
+                    v
+            delete-dev-vm.sh
+                    |
+                    | VM cleanup
+                    v
+              VM removed
 
-### VM provisioning
+The scripts have deliberately separate responsibilities:
+
+- `create-dev-vm.sh` provisions the infrastructure
+- `setup-dev-shell.sh` configures the common developer environment
+- `setup-dev-project.sh` configures a project environment
+- `delete-dev-vm.sh` completely removes a development VM
+
+## VM Provisioning
 
 `create-dev-vm.sh` is responsible for creating and configuring a development VM on Proxmox.
 
@@ -56,7 +72,7 @@ It handles infrastructure-level concerns such as:
 
 It should not contain project-specific configuration.
 
-### Developer shell setup
+## Developer Shell Setup
 
 `setup-dev-shell.sh` is responsible for configuring the common developer shell environment inside an existing development VM.
 
@@ -72,11 +88,13 @@ It currently handles:
 - Starship
 - user-local `PATH`
 - Bash aliases
+- Git aliases
+- Node/npm aliases
 - Starship configuration
 
 The shell setup is intentionally independent from project-specific tooling.
 
-### Project setup
+## Project Setup
 
 `setup-dev-project.sh` is responsible for preparing a development environment inside an existing VM.
 
@@ -88,6 +106,54 @@ A project may either:
 The script must therefore **not assume that a Git repository already exists**.
 
 Project-specific tooling and configuration should remain separate from the generic VM provisioning logic.
+
+The exact command-line interface and project setup workflow are still being implemented.
+
+## VM Deletion
+
+`delete-dev-vm.sh` is responsible for completely removing a development VM from Proxmox.
+
+Development VMs are intended to be disposable. If a VM becomes unusable, it should be possible to remove it and recreate it rather than relying on undocumented manual configuration.
+
+The script supports both interactive and direct VM selection.
+
+Interactive mode:
+
+    ./delete-dev-vm.sh
+
+This displays the available VMs and allows the user to select the VM to delete.
+
+A specific VM can also be selected directly:
+
+    ./delete-dev-vm.sh 201
+
+The script:
+
+- validates the VM ID
+- verifies that the VM exists
+- prevents deletion of protected VMs
+- asks for confirmation
+- gracefully shuts down a running VM
+- destroys the VM with `qm destroy --purge`
+- verifies that the VM has been removed
+
+Protected VM IDs are configured directly in the script:
+
+    PROTECTED_VMIDS=(100)
+
+Multiple VMs can be protected:
+
+    PROTECTED_VMIDS=(100 201 250)
+
+Protected VMs remain visible in the interactive VM list but cannot be deleted by the script.
+
+The deletion script only removes the VM and its associated Proxmox resources. It does not remove files outside the VM itself, such as:
+
+- project repositories
+- provisioning scripts
+- Cloud-Init source images
+- SSH keys
+- other files on the Proxmox host
 
 ## Default Operating System
 
@@ -189,6 +255,7 @@ The structure is intentionally kept small.
     .
     ├── README.md
     ├── create-dev-vm.sh
+    ├── delete-dev-vm.sh
     ├── setup-dev-shell.sh
     ├── setup-dev-project.sh
     └── profiles/
@@ -197,7 +264,7 @@ The structure may evolve as requirements become clearer.
 
 ## Usage
 
-### Create a development VM
+### Create a Development VM
 
 The minimum required parameters are:
 
@@ -231,7 +298,21 @@ Defaults can be overridden:
         --memory 24G \
         --disk 100G
 
-### Configure the developer shell
+### Delete a Development VM
+
+To interactively select a VM for deletion:
+
+    ./delete-dev-vm.sh
+
+To delete a specific VM:
+
+    ./delete-dev-vm.sh 201
+
+The script asks for confirmation before permanently deleting the VM.
+
+Protected VM IDs cannot be deleted by the script.
+
+### Configure the Developer Shell
 
 After the VM has been created and started, the common developer shell environment can be configured with:
 
@@ -247,6 +328,8 @@ It installs and configures:
 - `eza`
 - Starship
 - Bash aliases
+- Git aliases
+- Node/npm aliases
 - local user `PATH`
 
 The script is designed to be idempotent where practical. Running it again should not create duplicate shell configuration entries or reinstall components unnecessarily.
@@ -257,19 +340,16 @@ After the setup completes, reconnect to the VM:
         -i /root/.ssh/id_ed25519_vm_admin \
         dev@192.168.1.201
 
-### Configure a project
+### Configure a Project
 
 The project setup script will prepare a development environment inside an existing VM.
 
-The intended workflow is:
+A project may be initialized from:
 
-    ./setup-dev-project.sh \
-        --vm 201 \
-        --type react-express
+- an existing Git repository
+- a new project without an existing Git repository
 
-A project may be initialized from an existing repository or created as a new project.
-
-The exact command-line interface is still being implemented.
+The exact command-line interface and project setup workflow are still being implemented.
 
 ## Development Workflow
 
@@ -287,16 +367,16 @@ The intended workflow is:
     4. Configure developer shell
            |
            v
-    5. SSH into VM
+    5. Setup project
            |
            v
-    6. Setup project
+    6. Clone or create project
            |
            v
-    7. Clone or create project
+    7. Develop
            |
            v
-    8. Develop
+    8. Delete and recreate VM when necessary
 
 Development VMs are intended to be disposable.
 
@@ -308,12 +388,14 @@ The scripts should make it possible to:
 
 1. Create a clean development VM quickly.
 2. Recreate a VM without relying on undocumented manual steps.
-3. Keep infrastructure configuration independent from application projects.
-4. Make the resulting environment understandable and debuggable.
-5. Use predictable VM IDs and IP addresses.
-6. Keep the provisioning process simple.
-7. Avoid unnecessary infrastructure tooling.
-8. Provide a consistent base developer shell across development VMs.
+3. Completely remove a development VM when it is no longer needed.
+4. Keep infrastructure configuration independent from application projects.
+5. Make the resulting environment understandable and debuggable.
+6. Use predictable VM IDs and IP addresses.
+7. Keep the provisioning process simple.
+8. Avoid unnecessary infrastructure tooling.
+9. Provide a consistent base developer shell across development VMs.
+10. Support both existing repositories and new projects.
 
 ## Non-Goals
 
@@ -353,6 +435,9 @@ The following has been validated:
 - automated QEMU Guest Agent configuration
 - automated VM startup
 - automated VM provisioning
+- complete development VM deletion
+- protected VM deletion prevention
+- interactive VM deletion
 - developer shell provisioning
 - Git installation
 - `bat` installation
@@ -360,9 +445,11 @@ The following has been validated:
 - `eza` installation
 - Starship installation
 - Bash alias configuration
+- Git alias configuration
+- Node/npm alias configuration
 - user-local `PATH` configuration
 
-### VM provisioning validation
+### VM Provisioning Validation
 
 `create-dev-vm.sh` has been validated by creating development VMs end-to-end.
 
@@ -390,7 +477,21 @@ The current provisioning workflow is:
 9. Enable QEMU Guest Agent
 10. Start the VM
 
-### Developer shell validation
+### VM Deletion Validation
+
+`delete-dev-vm.sh` has been validated by creating and subsequently deleting a development VM.
+
+The deletion workflow has been verified for:
+
+- interactive VM selection
+- protected VM identification
+- VM confirmation
+- deletion of a development VM
+- removal of the VM disk
+- removal of the VM configuration
+- verification that the deleted VM no longer exists
+
+### Developer Shell Validation
 
 `setup-dev-shell.sh` has been validated against a freshly provisioned Rocky Linux development VM.
 
@@ -417,7 +518,7 @@ on the development VM.
 
 The Proxmox host only executes the SSH-based provisioning commands.
 
-### Project setup
+### Project Setup
 
 The next major step is to implement `setup-dev-project.sh`.
 
