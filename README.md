@@ -19,27 +19,23 @@ The goal is to provide a simple, reproducible and maintainable way to create iso
 
 ## Architecture
 
-The environment is divided into two main responsibilities:
+The environment is divided into separate responsibilities:
 
-```text
-create-dev-vm.sh
-
-        │
-
-        │ VM provisioning
-
-        ▼
-
-   Rocky Linux VM
-
-        │
-
-        │ Project setup
-
-        ▼
-
-setup-dev-project.sh
-```
+    create-dev-vm.sh
+            |
+            | VM provisioning
+            v
+       Rocky Linux VM
+            |
+            +-----------------------+
+            |                       |
+            v                       v
+    setup-dev-shell.sh      setup-dev-project.sh
+            |                       |
+            | Base developer        | Project-specific
+            | shell environment     | environment
+            v                       v
+       Developer tools        Application stack
 
 ### VM provisioning
 
@@ -56,8 +52,29 @@ It handles infrastructure-level concerns such as:
 - SSH access
 - QEMU Guest Agent
 - base operating system configuration
+- automatic VM startup
 
 It should not contain project-specific configuration.
+
+### Developer shell setup
+
+`setup-dev-shell.sh` is responsible for configuring the common developer shell environment inside an existing development VM.
+
+It currently handles:
+
+- Rocky Linux package updates
+- CRB repository configuration
+- EPEL configuration
+- Git installation
+- `bat`
+- `ripgrep`
+- `eza`
+- Starship
+- user-local `PATH`
+- Bash aliases
+- Starship configuration
+
+The shell setup is intentionally independent from project-specific tooling.
 
 ### Project setup
 
@@ -114,6 +131,7 @@ The current default development VM configuration is:
 | Cloud-Init | Enabled |
 | QEMU Guest Agent | Enabled |
 | SSH authentication | SSH public key |
+| VM startup | Automatic |
 
 The defaults can be overridden when creating a VM.
 
@@ -123,13 +141,13 @@ VM IDs and IP addresses are explicitly selected when creating a VM.
 
 For example:
 
-```text
-VM ID    IP address
--------------------
-201      192.168.1.201
-202      192.168.1.202
-203      192.168.1.203
-```
+    VM ID    IP address
+
+    201      192.168.1.201
+    202      192.168.1.202
+    203      192.168.1.203
+    204      192.168.1.204
+    205      192.168.1.205
 
 The provisioning script validates that:
 
@@ -141,17 +159,39 @@ The script does not automatically allocate VM IDs or IP addresses.
 
 This keeps the infrastructure predictable and easy to understand.
 
+## SSH Access
+
+Development VMs use SSH key authentication.
+
+The Proxmox host stores the SSH key pair used to access the development VMs:
+
+    /root/.ssh/id_ed25519_vm_admin
+    /root/.ssh/id_ed25519_vm_admin.pub
+
+The public key is injected into the VM through Cloud-Init.
+
+The private key remains on the Proxmox host and is used by administration scripts such as `setup-dev-shell.sh`.
+
+The default Cloud-Init user is:
+
+    dev
+
+Example manual connection:
+
+    ssh \
+        -i /root/.ssh/id_ed25519_vm_admin \
+        dev@192.168.1.205
+
 ## Repository Structure
 
 The structure is intentionally kept small.
 
-```text
-.
-├── README.md
-├── create-dev-vm.sh
-├── setup-dev-project.sh
-└── profiles/
-```
+    .
+    ├── README.md
+    ├── create-dev-vm.sh
+    ├── setup-dev-shell.sh
+    ├── setup-dev-project.sh
+    └── profiles/
 
 The structure may evolve as requirements become clearer.
 
@@ -167,33 +207,55 @@ The minimum required parameters are:
 
 Example:
 
-```bash
-./create-dev-vm.sh \
-    --name taskmanager \
-    --id 201 \
-    --ip 192.168.1.201
-```
+    ./create-dev-vm.sh \
+        --name taskmanager \
+        --id 201 \
+        --ip 192.168.1.201
 
 This creates a VM using the default configuration:
 
-```text
-CPU:      6 cores
-Memory:   16 GB
-Disk:     60 GB
-IP:       192.168.1.201
-```
+    CPU:      6 cores
+    Memory:   16 GB
+    Disk:     60 GB
+    IP:       192.168.1.201
+
+The VM is automatically started after provisioning.
 
 Defaults can be overridden:
 
-```bash
-./create-dev-vm.sh \
-    --name big-project \
-    --id 202 \
-    --ip 192.168.1.202 \
-    --cores 8 \
-    --memory 24G \
-    --disk 100G
-```
+    ./create-dev-vm.sh \
+        --name big-project \
+        --id 202 \
+        --ip 192.168.1.202 \
+        --cores 8 \
+        --memory 24G \
+        --disk 100G
+
+### Configure the developer shell
+
+After the VM has been created and started, the common developer shell environment can be configured with:
+
+    ./setup-dev-shell.sh --vm 201
+
+The script connects to the VM through SSH and configures the `dev` user's shell environment.
+
+It installs and configures:
+
+- Git
+- `bat`
+- `ripgrep`
+- `eza`
+- Starship
+- Bash aliases
+- local user `PATH`
+
+The script is designed to be idempotent where practical. Running it again should not create duplicate shell configuration entries or reinstall components unnecessarily.
+
+After the setup completes, reconnect to the VM:
+
+    ssh \
+        -i /root/.ssh/id_ed25519_vm_admin \
+        dev@192.168.1.201
 
 ### Configure a project
 
@@ -201,11 +263,9 @@ The project setup script will prepare a development environment inside an existi
 
 The intended workflow is:
 
-```bash
-./setup-dev-project.sh \
-    --vm 201 \
-    --type react-express
-```
+    ./setup-dev-project.sh \
+        --vm 201 \
+        --type react-express
 
 A project may be initialized from an existing repository or created as a new project.
 
@@ -215,24 +275,28 @@ The exact command-line interface is still being implemented.
 
 The intended workflow is:
 
-```text
-1. Create VM
-       │
-       ▼
-2. Rocky Linux + Cloud-Init
-       │
-       ▼
-3. SSH into VM
-       │
-       ▼
-4. Setup project
-       │
-       ▼
-5. Clone or create project
-       │
-       ▼
-6. Develop
-```
+    1. Create VM
+           |
+           v
+    2. Rocky Linux + Cloud-Init
+           |
+           v
+    3. VM starts automatically
+           |
+           v
+    4. Configure developer shell
+           |
+           v
+    5. SSH into VM
+           |
+           v
+    6. Setup project
+           |
+           v
+    7. Clone or create project
+           |
+           v
+    8. Develop
 
 Development VMs are intended to be disposable.
 
@@ -249,6 +313,7 @@ The scripts should make it possible to:
 5. Use predictable VM IDs and IP addresses.
 6. Keep the provisioning process simple.
 7. Avoid unnecessary infrastructure tooling.
+8. Provide a consistent base developer shell across development VMs.
 
 ## Non-Goals
 
@@ -262,6 +327,7 @@ It does not currently aim to provide:
 - complex configuration management
 - automatic production deployment
 - a large collection of pre-built VM templates
+- automatic project-specific infrastructure provisioning
 
 ## Current Status
 
@@ -285,9 +351,20 @@ The following has been validated:
 - automated SSH key configuration
 - automated static network configuration
 - automated QEMU Guest Agent configuration
+- automated VM startup
 - automated VM provisioning
+- developer shell provisioning
+- Git installation
+- `bat` installation
+- `ripgrep` installation
+- `eza` installation
+- Starship installation
+- Bash alias configuration
+- user-local `PATH` configuration
 
-`create-dev-vm.sh` has been validated by creating a development VM end-to-end.
+### VM provisioning validation
+
+`create-dev-vm.sh` has been validated by creating development VMs end-to-end.
 
 The resulting VM has been verified for:
 
@@ -298,19 +375,49 @@ The resulting VM has been verified for:
 - static IP connectivity
 - SSH access using the configured public key
 - QEMU Guest Agent availability
+- automatic VM startup
 
-The current provisioning workflow is therefore:
+The current provisioning workflow is:
 
 1. Validate VM parameters
-2. Create the Proxmox VM
-3. Import the Rocky Linux GenericCloud image
-4. Configure the VM disk
-5. Configure Cloud-Init
-6. Configure SSH key authentication
-7. Configure the static network
-8. Enable QEMU Guest Agent
+2. Validate the Rocky Linux GenericCloud image
+3. Create the Proxmox VM
+4. Import the Rocky Linux GenericCloud image
+5. Configure the VM disk
+6. Configure Cloud-Init
+7. Configure SSH key authentication
+8. Configure the static network
+9. Enable QEMU Guest Agent
+10. Start the VM
 
-The resulting VM can then be booted and validated.
+### Developer shell validation
+
+`setup-dev-shell.sh` has been validated against a freshly provisioned Rocky Linux development VM.
+
+The resulting shell environment has been verified for:
+
+- Git availability
+- `bat`
+- `ripgrep`
+- `eza`
+- Starship
+- user-local executable `PATH`
+- Bash aliases
+- Git aliases
+- Node/npm aliases
+- Starship prompt configuration
+
+The shell setup downloads user-level tools such as `eza` and Starship **inside the development VM**, not on the Proxmox host.
+
+For example, the `eza` binary is installed under:
+
+    ~/.local/bin/eza
+
+on the development VM.
+
+The Proxmox host only executes the SSH-based provisioning commands.
+
+### Project setup
 
 The next major step is to implement `setup-dev-project.sh`.
 
@@ -319,4 +426,4 @@ This script will prepare a development environment inside an existing VM and mus
 - existing Git repositories
 - new projects that do not yet have a Git repository
 
-The project setup workflow will remain separate from VM provisioning.
+The project setup workflow will remain separate from VM provisioning and generic developer shell configuration.
