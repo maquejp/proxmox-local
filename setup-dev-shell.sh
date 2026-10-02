@@ -7,7 +7,9 @@ set -euo pipefail
 # ==============================================================================
 
 DEV_USER="dev"
+
 SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
+SSH_PUBLIC_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
 
 EZA_VERSION="0.23.5"
 
@@ -18,27 +20,35 @@ VMID=""
 # ==============================================================================
 
 usage() {
+
     cat <<EOF
 Usage:
-  $0 --vm VMID
+
+$0 --vm VMID
 
 Required:
+
   --vm VMID         Proxmox VM ID
 
 Options:
+
   -h, --help        Show this help
 
 Example:
-  $0 --vm 203
+
+$0 --vm 203
+
 EOF
 }
 
 error() {
+
     echo "Error: $*" >&2
     exit 1
 }
 
 validate_vmid() {
+
     if [[ ! "$VMID" =~ ^[0-9]+$ ]]; then
         error "VMID must be numeric: $VMID"
     fi
@@ -49,16 +59,30 @@ validate_vmid() {
 }
 
 validate_ssh_key() {
+
     if [[ ! -f "$SSH_PRIVATE_KEY" ]]; then
-        error "SSH private key not found: $SSH_PRIVATE_KEY"
+        echo "Error: SSH private key not found: $SSH_PRIVATE_KEY" >&2
+        exit 1
     fi
 
     if [[ ! -r "$SSH_PRIVATE_KEY" ]]; then
-        error "SSH private key is not readable: $SSH_PRIVATE_KEY"
+        echo "Error: SSH private key is not readable: $SSH_PRIVATE_KEY" >&2
+        exit 1
+    fi
+
+    if [[ ! -f "$SSH_PUBLIC_KEY" ]]; then
+        echo "Error: SSH public key not found: $SSH_PUBLIC_KEY" >&2
+        exit 1
+    fi
+
+    if [[ ! -r "$SSH_PUBLIC_KEY" ]]; then
+        echo "Error: SSH public key is not readable: $SSH_PUBLIC_KEY" >&2
+        exit 1
     fi
 }
 
 get_vm_ip() {
+
     local ip
 
     ip=$(
@@ -78,6 +102,7 @@ get_vm_ip() {
 }
 
 validate_vm_running() {
+
     local status
 
     status=$(qm status "$VMID" | awk '{print $2}')
@@ -88,6 +113,7 @@ validate_vm_running() {
 }
 
 validate_ssh() {
+
     echo "Checking SSH connectivity..."
 
     if ! ssh \
@@ -97,6 +123,7 @@ validate_ssh() {
         -o ConnectTimeout=5 \
         "${DEV_USER}@${VM_IP}" \
         true; then
+
         error "SSH connection failed: ${DEV_USER}@${VM_IP}"
     fi
 
@@ -104,6 +131,7 @@ validate_ssh() {
 }
 
 run_remote() {
+
     ssh \
         -i "$SSH_PRIVATE_KEY" \
         -o BatchMode=yes \
@@ -122,26 +150,19 @@ install_system_packages() {
     echo "Updating Rocky Linux packages..."
 
     run_remote bash -s <<'REMOTE'
-
 set -euo pipefail
 
 if command -v dnf >/dev/null 2>&1; then
-
     sudo dnf upgrade -y
-
 else
-
     echo "Error: dnf not found." >&2
     exit 1
-
 fi
-
 REMOTE
 
     echo "Configuring Rocky Linux repositories..."
 
     run_remote bash -s <<'REMOTE'
-
 set -euo pipefail
 
 sudo dnf config-manager --enable crb
@@ -149,13 +170,11 @@ sudo dnf config-manager --enable crb
 if ! rpm -q epel-release >/dev/null 2>&1; then
     sudo dnf install -y epel-release
 fi
-
 REMOTE
 
     echo "Installing shell packages..."
 
     run_remote bash -s <<'REMOTE'
-
 set -euo pipefail
 
 packages=()
@@ -169,11 +188,11 @@ if [[ ${#packages[@]} -gt 0 ]]; then
 else
     echo "git, bat and ripgrep already installed."
 fi
-
 REMOTE
 }
 
 install_eza() {
+
     echo "Installing eza..."
 
     run_remote bash -s -- "$EZA_VERSION" <<'REMOTE'
@@ -186,11 +205,13 @@ mkdir -p "$BIN_DIR"
 
 if [[ -x "$BIN_DIR/eza" ]] &&
    "$BIN_DIR/eza" --version | grep -q "v${EZA_VERSION}"; then
+
     echo "eza v${EZA_VERSION} already installed."
     exit 0
 fi
 
 tmp_dir=$(mktemp -d)
+
 trap 'rm -rf "$tmp_dir"' EXIT
 
 curl -fsSL \
@@ -208,6 +229,7 @@ REMOTE
 }
 
 install_starship() {
+
     echo "Installing Starship..."
 
     run_remote bash -s <<'REMOTE'
@@ -234,6 +256,7 @@ REMOTE
 # ==============================================================================
 
 configure_path() {
+
     echo "Configuring PATH..."
 
     run_remote bash -s <<'REMOTE'
@@ -250,44 +273,50 @@ content = bashrc.read_text()
 
 marker = "# Local user binaries"
 
+block = """# Local user binaries
+
+if [[ -d "$HOME/.local/bin" ]]; then
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) export PATH="$HOME/.local/bin:$PATH" ;;
+    esac
+fi
+"""
+
+aliases_marker = "# Load development aliases"
+
 if marker in content:
+
     before, rest = content.split(marker, 1)
 
-    if "\n# Load development aliases" in rest:
-        rest = rest.split("\n# Load development aliases", 1)[0]
-
-    block = """# Local user binaries
-if [[ -d "$HOME/.local/bin" ]]; then
-    case ":$PATH:" in
-        *":$HOME/.local/bin:"*) ;;
-        *) export PATH="$HOME/.local/bin:$PATH" ;;
-    esac
-fi
-"""
-
-    aliases_marker = "# Load development aliases"
-
-    if aliases_marker in content:
-        suffix = content[content.index(aliases_marker):]
-        bashrc.write_text(before + block + "\n" + suffix)
+    if aliases_marker in rest:
+        suffix = rest[rest.index(aliases_marker):]
+        bashrc.write_text(
+            before +
+            block +
+            "\n" +
+            suffix
+        )
     else:
-        bashrc.write_text(before + block + "\n")
-else:
-    block = """# Local user binaries
-if [[ -d "$HOME/.local/bin" ]]; then
-    case ":$PATH:" in
-        *":$HOME/.local/bin:"*) ;;
-        *) export PATH="$HOME/.local/bin:$PATH" ;;
-    esac
-fi
-"""
+        bashrc.write_text(
+            before +
+            block +
+            "\n"
+        )
 
-    bashrc.write_text(content.rstrip() + "\n\n" + block)
+else:
+
+    bashrc.write_text(
+        content.rstrip() +
+        "\n\n" +
+        block
+    )
 PY
 REMOTE
 }
 
 configure_aliases() {
+
     echo "Configuring Bash aliases..."
 
     run_remote bash -s <<'REMOTE'
@@ -403,21 +432,27 @@ alias initnode='npm init -y'
 alias cleannode='rm -rf node_modules package-lock.json'
 alias upnode='npm update'
 alias servejs='npx serve'
+
 EOF
 
 if ! grep -Fq '# Load development aliases' "$BASHRC"; then
+
     cat >> "$BASHRC" <<'EOF'
 
 # Load development aliases
+
 if [[ -f "$HOME/.config/bash/aliases" ]]; then
     source "$HOME/.config/bash/aliases"
 fi
+
 EOF
+
 fi
 REMOTE
 }
 
 configure_starship() {
+
     echo "Configuring Starship..."
 
     run_remote bash -s <<'REMOTE'
@@ -448,13 +483,17 @@ symbol = 'git:'
 EOF
 
 if ! grep -Fq '# Initialize Starship' "$BASHRC"; then
+
     cat >> "$BASHRC" <<'EOF'
 
 # Initialize Starship
+
 if command -v starship >/dev/null 2>&1; then
     eval "$(starship init bash)"
 fi
+
 EOF
+
 fi
 REMOTE
 }
@@ -464,22 +503,33 @@ REMOTE
 # ==============================================================================
 
 while [[ $# -gt 0 ]]; do
+
     case "$1" in
+
         --vm)
+
             [[ $# -ge 2 ]] || error "--vm requires a value"
+
             VMID="$2"
+
             shift 2
             ;;
+
         -h|--help)
+
             usage
             exit 0
             ;;
+
         *)
+
             echo "Error: unknown option: $1" >&2
             usage >&2
             exit 1
             ;;
+
     esac
+
 done
 
 # ==============================================================================
@@ -503,16 +553,19 @@ validate_ssh
 # ==============================================================================
 
 echo
+
 echo "Developer shell setup target:"
 echo "  VM ID   : $VMID"
 echo "  VM IP   : $VM_IP"
 echo "  User    : $DEV_USER"
 echo "  SSH key : $SSH_PRIVATE_KEY"
+
 echo
 
 install_system_packages
 install_eza
 install_starship
+
 configure_path
 configure_aliases
 configure_starship
@@ -522,6 +575,7 @@ configure_starship
 # ==============================================================================
 
 echo
+
 echo "Developer shell setup complete:"
 echo "  VM ID   : $VMID"
 echo "  VM IP   : $VM_IP"
@@ -530,5 +584,7 @@ echo "  eza     : v${EZA_VERSION}"
 echo "  bat     : installed"
 echo "  rg      : installed"
 echo "  Starship: installed"
+
 echo
+
 echo "Reconnect to the VM to load the new shell configuration."

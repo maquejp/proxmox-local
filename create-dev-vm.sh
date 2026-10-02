@@ -26,11 +26,21 @@ BIOS="seabios"
 CPU="host"
 OS_TYPE="l26"
 
-# SSH key used by the Proxmox host to access development VMs.
+# ------------------------------------------------------------------------------
+# SSH configuration
+# ------------------------------------------------------------------------------
+
+DEV_USER="dev"
+
+SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
 SSH_PUBLIC_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
 
-# Reusable Rocky Linux Cloud-Init source image.
-# This file is imported into local-lvm for each new development VM.
+SSH_TIMEOUT=60
+
+# ------------------------------------------------------------------------------
+# Rocky Linux image
+# ------------------------------------------------------------------------------
+
 ROCKY_IMAGE="/var/lib/vz/template/qcow2/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2"
 
 # ------------------------------------------------------------------------------
@@ -45,32 +55,40 @@ IP=""
 # Functions
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Display command usage
-# ------------------------------------------------------------------------------
-
 usage() {
+
     cat <<EOF
 Usage:
-  $0 --name NAME --id VMID --ip IP [OPTIONS]
+
+$0 --name NAME --id VMID --ip IP [OPTIONS]
 
 Required:
+
   --name NAME       VM name
   --id VMID         Proxmox VM ID
   --ip IP           Static IPv4 address
 
 Optional:
+
   --cores N         CPU cores (default: ${CORES})
   --memory SIZE     RAM (default: ${MEMORY})
   --disk SIZE       Disk size (default: ${DISK})
   -h, --help        Show this help
 
 Example:
-  $0 --name taskmanager --id 201 --ip 192.168.1.201
 
-  $0 --name big-project --id 202 --ip 192.168.1.202 \
-     --cores 8 --memory 24G --disk 100G
+$0 --name taskmanager --id 201 --ip 192.168.1.201
+
+$0 --name big-project --id 202 --ip 192.168.1.202 \
+    --cores 8 --memory 24G --disk 100G
+
 EOF
+}
+
+error() {
+
+    echo "Error: $*" >&2
+    exit 1
 }
 
 # ------------------------------------------------------------------------------
@@ -78,19 +96,17 @@ EOF
 # ------------------------------------------------------------------------------
 
 validate_vmid() {
+
     if [[ ! "$VMID" =~ ^[0-9]+$ ]]; then
-        echo "Error: VMID must be numeric: $VMID" >&2
-        exit 1
+        error "VMID must be numeric: $VMID"
     fi
 
     if (( VMID < 100 || VMID > 999999999 )); then
-        echo "Error: invalid VMID: $VMID" >&2
-        exit 1
+        error "Invalid VMID: $VMID"
     fi
 
     if qm status "$VMID" &>/dev/null; then
-        echo "Error: VMID $VMID is already in use" >&2
-        exit 1
+        error "VMID $VMID is already in use"
     fi
 }
 
@@ -99,19 +115,26 @@ validate_vmid() {
 # ------------------------------------------------------------------------------
 
 validate_ip() {
+
     local ip="$1"
     local IFS=.
 
     read -r o1 o2 o3 o4 <<< "$ip"
 
-    if [[ -z "$o1" || -z "$o2" || -z "$o3" || -z "$o4" ]] ||
+    if [[ -z "$o1" ||
+          -z "$o2" ||
+          -z "$o3" ||
+          -z "$o4" ]] ||
        ! [[ "$o1" =~ ^[0-9]+$ &&
             "$o2" =~ ^[0-9]+$ &&
             "$o3" =~ ^[0-9]+$ &&
             "$o4" =~ ^[0-9]+$ ]] ||
-       (( o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255 )); then
-        echo "Error: invalid IPv4 address: $ip" >&2
-        exit 1
+       (( o1 > 255 ||
+           o2 > 255 ||
+           o3 > 255 ||
+           o4 > 255 )); then
+
+        error "Invalid IPv4 address: $ip"
     fi
 }
 
@@ -120,16 +143,19 @@ validate_ip() {
 # ------------------------------------------------------------------------------
 
 validate_ip_not_configured() {
+
     local ip="$1"
 
     while read -r vmid; do
+
         [[ -z "$vmid" ]] && continue
 
         if qm config "$vmid" |
             grep -qE "^ipconfig[0-9]+:.*ip=${ip}(/|,|$)"; then
-            echo "Error: IP $ip is already configured for VM $vmid" >&2
-            exit 1
+
+            error "IP $ip is already configured for VM $vmid"
         fi
+
     done < <(qm list | awk 'NR > 1 {print $1}')
 }
 
@@ -138,9 +164,9 @@ validate_ip_not_configured() {
 # ------------------------------------------------------------------------------
 
 validate_rocky_image() {
+
     if [[ ! -f "$ROCKY_IMAGE" ]]; then
-        echo "Error: Rocky Linux image not found: $ROCKY_IMAGE" >&2
-        exit 1
+        error "Rocky Linux image not found: $ROCKY_IMAGE"
     fi
 }
 
@@ -149,9 +175,9 @@ validate_rocky_image() {
 # ------------------------------------------------------------------------------
 
 validate_cores() {
+
     if [[ ! "$CORES" =~ ^[1-9][0-9]*$ ]]; then
-        echo "Error: invalid CPU core count: $CORES" >&2
-        exit 1
+        error "Invalid CPU core count: $CORES"
     fi
 }
 
@@ -160,38 +186,47 @@ validate_cores() {
 # ------------------------------------------------------------------------------
 
 validate_disk() {
+
     if [[ ! "$DISK" =~ ^[1-9][0-9]*G$ ]]; then
-        echo "Error: invalid disk size: $DISK" >&2
-        exit 1
+        error "Invalid disk size: $DISK"
     fi
 }
 
 # ------------------------------------------------------------------------------
-# Validate SSH public key
+# Validate SSH keys
 # ------------------------------------------------------------------------------
 
 validate_ssh_key() {
+
+    if [[ ! -f "$SSH_PRIVATE_KEY" ]]; then
+        error "SSH private key not found: $SSH_PRIVATE_KEY"
+    fi
+
+    if [[ ! -r "$SSH_PRIVATE_KEY" ]]; then
+        error "SSH private key is not readable: $SSH_PRIVATE_KEY"
+    fi
+
     if [[ ! -f "$SSH_PUBLIC_KEY" ]]; then
-        echo "Error: SSH public key not found: $SSH_PUBLIC_KEY" >&2
-        exit 1
+        error "SSH public key not found: $SSH_PUBLIC_KEY"
     fi
 
     if [[ ! -r "$SSH_PUBLIC_KEY" ]]; then
-        echo "Error: SSH public key is not readable: $SSH_PUBLIC_KEY" >&2
-        exit 1
+        error "SSH public key is not readable: $SSH_PUBLIC_KEY"
     fi
 }
 
 # ------------------------------------------------------------------------------
-# Convert memory value to MiB for qm
+# Convert memory value to MiB
 #
 # Examples:
+#
 #   16G  -> 16384
 #   24G  -> 24576
 #   8192 -> 8192
 # ------------------------------------------------------------------------------
 
 memory_to_mib() {
+
     local value="$1"
 
     if [[ "$value" =~ ^([0-9]+)G$ ]]; then
@@ -204,8 +239,7 @@ memory_to_mib() {
         return
     fi
 
-    echo "Error: invalid memory size: $value" >&2
-    exit 1
+    error "Invalid memory size: $value"
 }
 
 # ------------------------------------------------------------------------------
@@ -213,6 +247,7 @@ memory_to_mib() {
 # ------------------------------------------------------------------------------
 
 create_vm() {
+
     echo "Creating VM $VMID ($NAME)..."
 
     qm create "$VMID" \
@@ -234,6 +269,7 @@ create_vm() {
 # ------------------------------------------------------------------------------
 
 configure_disk() {
+
     echo "Importing Rocky Linux image..."
 
     qm importdisk \
@@ -249,7 +285,10 @@ configure_disk() {
     qm set "$VMID" \
         --scsi0 "${STORAGE}:vm-${VMID}-disk-0,iothread=1"
 
-    qm resize "$VMID" scsi0 "$DISK"
+    qm resize \
+        "$VMID" \
+        scsi0 \
+        "$DISK"
 
     qm set "$VMID" \
         --boot "order=scsi0"
@@ -262,11 +301,12 @@ configure_disk() {
 # ------------------------------------------------------------------------------
 
 configure_cloud_init() {
+
     echo "Configuring Cloud-Init..."
 
     qm set "$VMID" \
         --ide2 "$STORAGE:cloudinit" \
-        --ciuser dev \
+        --ciuser "$DEV_USER" \
         --sshkeys "$SSH_PUBLIC_KEY" \
         --ipconfig0 "ip=${IP}/24,gw=${GATEWAY}"
 
@@ -275,90 +315,139 @@ configure_cloud_init() {
     echo "Cloud-Init configured."
 }
 
+# ------------------------------------------------------------------------------
+# Remove stale SSH host key
+#
+# Development VMs are disposable and may reuse an IP address.
+# When a VM is recreated, its SSH host key changes.
+# ------------------------------------------------------------------------------
+
+remove_stale_ssh_host_key() {
+
+    echo "Removing any previous SSH host key for $IP..."
+
+    ssh-keygen \
+        -f "$HOME/.ssh/known_hosts" \
+        -R "$IP" \
+        >/dev/null 2>&1 || true
+}
+
+# ------------------------------------------------------------------------------
+# Wait until SSH is available
+# ------------------------------------------------------------------------------
+
+wait_for_ssh() {
+
+    echo "Waiting for SSH..."
+
+    local attempts=$((SSH_TIMEOUT / 2))
+
+    for ((i = 1; i <= attempts; i++)); do
+
+        if ssh \
+            -i "$SSH_PRIVATE_KEY" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=3 \
+            "${DEV_USER}@${IP}" \
+            true 2>/dev/null; then
+
+            echo "SSH is available."
+            return 0
+        fi
+
+        sleep 2
+    done
+
+    error "SSH did not become available within ${SSH_TIMEOUT} seconds."
+}
+
 # ==============================================================================
-# Parse command-line arguments
+# Argument parsing
 # ==============================================================================
 
 while [[ $# -gt 0 ]]; do
+
     case "$1" in
+
         --name)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --name requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--name requires a value"
+
             NAME="$2"
+
             shift 2
             ;;
+
         --id)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --id requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--id requires a value"
+
             VMID="$2"
+
             shift 2
             ;;
+
         --ip)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --ip requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--ip requires a value"
+
             IP="$2"
+
             shift 2
             ;;
+
         --cores)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --cores requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--cores requires a value"
+
             CORES="$2"
+
             shift 2
             ;;
+
         --memory)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --memory requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--memory requires a value"
+
             MEMORY="$2"
+
             shift 2
             ;;
+
         --disk)
-            [[ $# -ge 2 ]] || {
-                echo "Error: --disk requires a value" >&2
-                exit 1
-            }
+
+            [[ $# -ge 2 ]] || error "--disk requires a value"
+
             DISK="$2"
+
             shift 2
             ;;
+
         -h|--help)
+
             usage
             exit 0
             ;;
+
         *)
+
             echo "Error: unknown option: $1" >&2
             usage >&2
             exit 1
             ;;
+
     esac
+
 done
 
 # ==============================================================================
 # Required arguments
 # ==============================================================================
 
-if [[ -z "$NAME" ]]; then
-    echo "Error: --name is required" >&2
-    exit 1
-fi
-
-if [[ -z "$VMID" ]]; then
-    echo "Error: --id is required" >&2
-    exit 1
-fi
-
-if [[ -z "$IP" ]]; then
-    echo "Error: --ip is required" >&2
-    exit 1
-fi
+[[ -n "$NAME" ]] || error "--name is required"
+[[ -n "$VMID" ]] || error "--id is required"
+[[ -n "$IP" ]] || error "--ip is required"
 
 # ==============================================================================
 # Validation
@@ -378,12 +467,17 @@ MEMORY_MIB=$(memory_to_mib "$MEMORY")
 # Display configuration
 # ==============================================================================
 
-echo "VM name : $NAME"
-echo "VM ID   : $VMID"
-echo "IP      : $IP"
-echo "Cores   : $CORES"
-echo "Memory  : $MEMORY ($MEMORY_MIB MiB)"
-echo "Disk    : $DISK"
+echo
+echo "Development VM configuration:"
+echo "  Name    : $NAME"
+echo "  VM ID   : $VMID"
+echo "  IP      : $IP"
+echo "  Cores   : $CORES"
+echo "  Memory  : $MEMORY"
+echo "  Disk    : $DISK"
+echo "  Storage : $STORAGE"
+echo "  Bridge  : $BRIDGE"
+echo
 
 # ==============================================================================
 # Provision VM
@@ -393,7 +487,26 @@ create_vm
 configure_disk
 configure_cloud_init
 
+# A recreated disposable VM may reuse an IP previously associated with
+# another VM. Remove that stale host key before accepting the new one.
+remove_stale_ssh_host_key
+
 echo "Starting VM..."
+
 qm start "$VMID"
 
 echo "VM $VMID started."
+
+wait_for_ssh
+
+# ==============================================================================
+# Summary
+# ==============================================================================
+
+echo
+echo "Development VM ready:"
+echo "  VM ID : $VMID"
+echo "  Name  : $NAME"
+echo "  IP    : $IP"
+echo "  SSH   : ${DEV_USER}@${IP}"
+echo
