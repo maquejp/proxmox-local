@@ -85,13 +85,16 @@ PROJECT_DIR="/home/${DEV_USER}/${PROJECT_NAME}"
 
 cd "$PROJECT_DIR"
 
-git init
+git init -b main
 
 git config user.name "$GIT_USER_NAME"
 git config user.email "$GIT_USER_EMAIL"
 
 git add .
 git commit -m "chore: initialize project"
+
+git branch --show-current
+git status --short
 
 REMOTE
 }
