@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+trap '[[ -n "${SSH_KEYS_FILE:-}" ]] && rm -f "$SSH_KEYS_FILE"' EXIT
+
 # ==============================================================================
 # Proxmox Development VM
 # ==============================================================================
@@ -31,10 +33,10 @@ OS_TYPE="l26"
 # ------------------------------------------------------------------------------
 
 DEV_USER="dev"
-
 SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
 SSH_PUBLIC_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
-
+DEVELOPER_SSH_PUBLIC_KEY=""
+SSH_KEYS_FILE=""
 SSH_TIMEOUT=60
 
 # ------------------------------------------------------------------------------
@@ -58,6 +60,7 @@ IP=""
 usage() {
 
     cat <<EOF
+
 Usage:
 
 $0 --name NAME --id VMID --ip IP [OPTIONS]
@@ -65,22 +68,32 @@ $0 --name NAME --id VMID --ip IP [OPTIONS]
 Required:
 
   --name NAME       VM name
+
   --id VMID         Proxmox VM ID
+
   --ip IP           Static IPv4 address
+
+  --ssh-public-key PATH
+                    Developer SSH public key
 
 Optional:
 
   --cores N         CPU cores (default: ${CORES})
+
   --memory SIZE     RAM (default: ${MEMORY})
+
   --disk SIZE       Disk size (default: ${DISK})
+
   -h, --help        Show this help
 
 Example:
 
-$0 --name taskmanager --id 201 --ip 192.168.1.201
+$0 --name taskmanager --id 201 --ip 192.168.1.201 \
+    --ssh-public-key /root/id_ed25519.pub
 
 $0 --name big-project --id 202 --ip 192.168.1.202 \
-    --cores 8 --memory 24G --disk 100G
+    --cores 8 --memory 24G --disk 100G \
+    --ssh-public-key /root/id_ed25519.pub
 
 EOF
 }
@@ -193,7 +206,7 @@ validate_disk() {
 }
 
 # ------------------------------------------------------------------------------
-# Validate SSH keys
+# Validate Proxmox SSH keys
 # ------------------------------------------------------------------------------
 
 validate_ssh_key() {
@@ -213,6 +226,39 @@ validate_ssh_key() {
     if [[ ! -r "$SSH_PUBLIC_KEY" ]]; then
         error "SSH public key is not readable: $SSH_PUBLIC_KEY"
     fi
+}
+
+# ------------------------------------------------------------------------------
+# Validate developer SSH public key
+# ------------------------------------------------------------------------------
+
+validate_developer_ssh_key() {
+
+    if [[ -z "$DEVELOPER_SSH_PUBLIC_KEY" ]]; then
+        error "Developer SSH public key is required: use --ssh-public-key"
+    fi
+
+    if [[ ! -f "$DEVELOPER_SSH_PUBLIC_KEY" ]]; then
+        error "Developer SSH public key not found: $DEVELOPER_SSH_PUBLIC_KEY"
+    fi
+
+    if [[ ! -r "$DEVELOPER_SSH_PUBLIC_KEY" ]]; then
+        error "Developer SSH public key is not readable: $DEVELOPER_SSH_PUBLIC_KEY"
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Prepare SSH public keys for Cloud-Init
+# ------------------------------------------------------------------------------
+
+prepare_ssh_keys() {
+
+    SSH_KEYS_FILE=$(mktemp)
+
+    cat \
+        "$SSH_PUBLIC_KEY" \
+        "$DEVELOPER_SSH_PUBLIC_KEY" \
+        > "$SSH_KEYS_FILE"
 }
 
 # ------------------------------------------------------------------------------
@@ -307,7 +353,7 @@ configure_cloud_init() {
     qm set "$VMID" \
         --ide2 "$STORAGE:cloudinit" \
         --ciuser "$DEV_USER" \
-        --sshkeys "$SSH_PUBLIC_KEY" \
+        --sshkeys "$SSH_KEYS_FILE" \
         --ipconfig0 "ip=${IP}/24,gw=${GATEWAY}"
 
     qm cloudinit update "$VMID"
@@ -377,6 +423,7 @@ while [[ $# -gt 0 ]]; do
             NAME="$2"
 
             shift 2
+
             ;;
 
         --id)
@@ -386,6 +433,7 @@ while [[ $# -gt 0 ]]; do
             VMID="$2"
 
             shift 2
+
             ;;
 
         --ip)
@@ -395,6 +443,7 @@ while [[ $# -gt 0 ]]; do
             IP="$2"
 
             shift 2
+
             ;;
 
         --cores)
@@ -404,6 +453,7 @@ while [[ $# -gt 0 ]]; do
             CORES="$2"
 
             shift 2
+
             ;;
 
         --memory)
@@ -413,6 +463,7 @@ while [[ $# -gt 0 ]]; do
             MEMORY="$2"
 
             shift 2
+
             ;;
 
         --disk)
@@ -422,12 +473,25 @@ while [[ $# -gt 0 ]]; do
             DISK="$2"
 
             shift 2
+
+            ;;
+
+        --ssh-public-key)
+
+            [[ $# -ge 2 ]] || error "--ssh-public-key requires a value"
+
+            DEVELOPER_SSH_PUBLIC_KEY="$2"
+
+            shift 2
+
             ;;
 
         -h|--help)
 
             usage
+
             exit 0
+
             ;;
 
         *)
@@ -435,6 +499,7 @@ while [[ $# -gt 0 ]]; do
             echo "Error: unknown option: $1" >&2
             usage >&2
             exit 1
+
             ;;
 
     esac
@@ -460,6 +525,8 @@ validate_rocky_image
 validate_cores
 validate_disk
 validate_ssh_key
+validate_developer_ssh_key
+prepare_ssh_keys
 
 MEMORY_MIB=$(memory_to_mib "$MEMORY")
 
@@ -468,15 +535,20 @@ MEMORY_MIB=$(memory_to_mib "$MEMORY")
 # ==============================================================================
 
 echo
+
 echo "Development VM configuration:"
-echo "  Name    : $NAME"
-echo "  VM ID   : $VMID"
-echo "  IP      : $IP"
-echo "  Cores   : $CORES"
-echo "  Memory  : $MEMORY"
-echo "  Disk    : $DISK"
-echo "  Storage : $STORAGE"
-echo "  Bridge  : $BRIDGE"
+
+echo "  Name                : $NAME"
+echo "  VM ID               : $VMID"
+echo "  IP                  : $IP"
+echo "  Cores               : $CORES"
+echo "  Memory              : $MEMORY"
+echo "  Disk                : $DISK"
+echo "  Storage             : $STORAGE"
+echo "  Bridge              : $BRIDGE"
+echo "  SSH automation key  : $SSH_PUBLIC_KEY"
+echo "  SSH developer key   : $DEVELOPER_SSH_PUBLIC_KEY"
+
 echo
 
 # ==============================================================================
@@ -489,6 +561,7 @@ configure_cloud_init
 
 # A recreated disposable VM may reuse an IP previously associated with
 # another VM. Remove that stale host key before accepting the new one.
+
 remove_stale_ssh_host_key
 
 echo "Starting VM..."
@@ -504,9 +577,12 @@ wait_for_ssh
 # ==============================================================================
 
 echo
+
 echo "Development VM ready:"
+
 echo "  VM ID : $VMID"
 echo "  Name  : $NAME"
 echo "  IP    : $IP"
 echo "  SSH   : ${DEV_USER}@${IP}"
+
 echo
