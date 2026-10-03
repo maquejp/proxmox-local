@@ -13,8 +13,22 @@ VM_IP=""
 
 SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
 
+PROJECT_NAME=""
+PROJECT_SOURCE=""
+PROJECT_TYPE=""
+REPOSITORY_URL=""
+
+FRONTEND=""
+BACKEND=""
+
+DATABASE_STRATEGY=""
+DATABASE_ENGINE=""
+
+GITHUB_SSH_PRIVATE_KEY="/home/${DEV_USER}/.ssh/id_ed25519_github"
+GITHUB_SSH_PUBLIC_KEY="/home/${DEV_USER}/.ssh/id_ed25519_github.pub"
+
 # ==============================================================================
-# Functions
+# General functions
 # ==============================================================================
 
 error() {
@@ -22,6 +36,31 @@ error() {
     echo "Error: $*" >&2
     exit 1
 }
+
+prompt_choice() {
+
+    local prompt="$1"
+    local max="$2"
+    local choice
+
+    while true; do
+
+        read -r -p "$prompt" choice
+
+        if [[ "$choice" =~ ^[1-9][0-9]*$ ]] &&
+           (( choice <= max )); then
+
+            printf '%s\n' "$choice"
+            return
+        fi
+
+        echo "Invalid choice. Please enter a number between 1 and $max." >&2
+    done
+}
+
+# ==============================================================================
+# VM validation
+# ==============================================================================
 
 validate_vmid() {
 
@@ -83,25 +122,447 @@ validate_ssh() {
     echo "SSH connectivity OK."
 }
 
-prompt_choice() {
+# ==============================================================================
+# Remote commands
+# ==============================================================================
 
-    local prompt="$1"
-    local max="$2"
+run_remote() {
+
+    ssh \
+        -i "$SSH_PRIVATE_KEY" \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=accept-new \
+        -o ConnectTimeout=5 \
+        "${DEV_USER}@${VM_IP}" \
+        "$@"
+}
+
+# ==============================================================================
+# Project prompts
+# ==============================================================================
+
+prompt_project_name() {
+
+    read -r -p "Project name: " PROJECT_NAME
+
+    if [[ -z "$PROJECT_NAME" ]]; then
+        error "Project name cannot be empty"
+    fi
+}
+
+prompt_project_source() {
+
+    echo
+    echo "Project source:"
+    echo "  1) New project"
+    echo "  2) Existing repository"
+
     local choice
+    choice=$(prompt_choice "Choice: " 2)
 
-    while true; do
+    case "$choice" in
 
-        read -r -p "$prompt" choice
+        1)
+            PROJECT_SOURCE="new"
+            ;;
 
-        if [[ "$choice" =~ ^[1-9][0-9]*$ ]] && (( choice <= max )); then
+        2)
+            PROJECT_SOURCE="existing"
+            ;;
 
-            printf '%s\n' "$choice"
+    esac
+}
 
-            return
-        fi
+prompt_repository_url() {
 
-        echo "Invalid choice. Please enter a number between 1 and $max." >&2
-    done
+    echo
+
+    read -r -p "Repository URL: " REPOSITORY_URL
+
+    if [[ -z "$REPOSITORY_URL" ]]; then
+        error "Repository URL cannot be empty"
+    fi
+}
+
+prompt_project_type() {
+
+    echo
+    echo "Project type:"
+    echo "  1) Frontend"
+    echo "  2) Backend / API"
+    echo "  3) Full-stack"
+    echo "  4) Other"
+
+    local choice
+    choice=$(prompt_choice "Choice: " 4)
+
+    case "$choice" in
+
+        1)
+            PROJECT_TYPE="frontend"
+            ;;
+
+        2)
+            PROJECT_TYPE="backend"
+            ;;
+
+        3)
+            PROJECT_TYPE="fullstack"
+            ;;
+
+        4)
+            PROJECT_TYPE="other"
+            ;;
+
+    esac
+}
+
+prompt_frontend() {
+
+    echo
+    echo "Frontend:"
+    echo "  1) Vite + React"
+    echo "  2) Angular"
+
+    local choice
+    choice=$(prompt_choice "Choice: " 2)
+
+    case "$choice" in
+
+        1)
+            FRONTEND="vite-react"
+            ;;
+
+        2)
+            FRONTEND="angular"
+            ;;
+
+    esac
+}
+
+prompt_backend() {
+
+    echo
+    echo "Backend:"
+    echo "  1) Express"
+    echo "  2) Laravel"
+    echo "  3) Spring Boot"
+
+    local choice
+    choice=$(prompt_choice "Choice: " 3)
+
+    case "$choice" in
+
+        1)
+            BACKEND="express"
+            ;;
+
+        2)
+            BACKEND="laravel"
+            ;;
+
+        3)
+            BACKEND="spring-boot"
+            ;;
+
+    esac
+}
+
+prompt_database() {
+
+    echo
+    echo "Database:"
+    echo "  1) None"
+    echo "  2) Create database on this VM"
+    echo "  3) Use an existing database VM"
+
+    local choice
+    choice=$(prompt_choice "Choice: " 3)
+
+    case "$choice" in
+
+        1)
+            DATABASE_STRATEGY="none"
+            ;;
+
+        2)
+            DATABASE_STRATEGY="local"
+            ;;
+
+        3)
+            DATABASE_STRATEGY="existing-vm"
+            ;;
+
+    esac
+
+    if [[ "$DATABASE_STRATEGY" == "local" ]]; then
+        prompt_database_engine
+    fi
+}
+
+prompt_database_engine() {
+
+    echo
+    echo "Database engine:"
+    echo "  1) PostgreSQL"
+    echo "  2) MariaDB"
+    echo "  3) MongoDB"
+
+    local choice
+    choice=$(prompt_choice "Choice: " 3)
+
+    case "$choice" in
+
+        1)
+            DATABASE_ENGINE="postgresql"
+            ;;
+
+        2)
+            DATABASE_ENGINE="mariadb"
+            ;;
+
+        3)
+            DATABASE_ENGINE="mongodb"
+            ;;
+
+    esac
+}
+
+# ==============================================================================
+# New project configuration
+# ==============================================================================
+
+configure_new_project() {
+
+    prompt_project_type
+
+    case "$PROJECT_TYPE" in
+
+        frontend)
+            prompt_frontend
+            ;;
+
+        backend)
+            prompt_backend
+            ;;
+
+        fullstack)
+            prompt_frontend
+            prompt_backend
+            ;;
+
+        other)
+            ;;
+
+    esac
+
+    if [[ -n "$BACKEND" ]]; then
+        prompt_database
+    fi
+}
+
+# ==============================================================================
+# GitHub SSH
+# ==============================================================================
+
+is_github_ssh_url() {
+
+    [[ "$REPOSITORY_URL" == git@github.com:* ]]
+}
+
+configure_github_ssh() {
+
+    run_remote mkdir -p "/home/${DEV_USER}/.ssh"
+    run_remote chmod 700 "/home/${DEV_USER}/.ssh"
+
+    local ssh_config
+
+    ssh_config=$(cat <<EOF
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ${GITHUB_SSH_PRIVATE_KEY}
+    IdentitiesOnly yes
+EOF
+)
+
+    run_remote \
+        "printf '%s\n' '$ssh_config' > /home/${DEV_USER}/.ssh/config"
+
+    run_remote chmod 600 "/home/${DEV_USER}/.ssh/config"
+}
+
+add_github_host_key() {
+
+    echo "Adding GitHub host key..."
+
+    local github_host_key
+
+    github_host_key=$(ssh-keyscan github.com 2>/dev/null)
+
+    if [[ -z "$github_host_key" ]]; then
+        error "Failed to retrieve GitHub host key"
+    fi
+
+    run_remote \
+        "printf '%s\n' '$github_host_key' >> /home/${DEV_USER}/.ssh/known_hosts"
+
+    run_remote chmod 644 "/home/${DEV_USER}/.ssh/known_hosts"
+}
+
+setup_github_ssh() {
+
+    echo
+    echo "Checking GitHub SSH authentication..."
+
+    run_remote mkdir -p "/home/${DEV_USER}/.ssh"
+    run_remote chmod 700 "/home/${DEV_USER}/.ssh"
+
+    if ! run_remote test -f "$GITHUB_SSH_PRIVATE_KEY" ||
+       ! run_remote test -f "$GITHUB_SSH_PUBLIC_KEY"; then
+
+        echo
+        echo "No GitHub SSH key found on the VM."
+        echo "Generating a dedicated GitHub SSH key..."
+
+        run_remote ssh-keygen \
+            -t ed25519 \
+            -C "dev@${VMID}" \
+            -f "$GITHUB_SSH_PRIVATE_KEY" \
+            -N '""'
+
+        run_remote chmod 600 "$GITHUB_SSH_PRIVATE_KEY"
+        run_remote chmod 644 "$GITHUB_SSH_PUBLIC_KEY"
+    fi
+
+    run_remote touch "/home/${DEV_USER}/.ssh/known_hosts"
+
+    if ! run_remote grep -q "github.com" "/home/${DEV_USER}/.ssh/known_hosts"; then
+        add_github_host_key
+    fi
+
+    configure_github_ssh
+
+    local public_key
+
+    public_key=$(run_remote cat "$GITHUB_SSH_PUBLIC_KEY")
+
+    echo
+    echo "GitHub SSH public key:"
+    echo
+    echo "$public_key"
+    echo
+    echo "Add this key to your GitHub account:"
+    echo "GitHub → Settings → SSH and GPG keys"
+    echo
+
+    read -r -p "Press Enter once the key has been added to GitHub..."
+
+    echo
+    echo "Testing GitHub SSH authentication..."
+
+    local github_result
+
+    github_result=$(
+        run_remote ssh \
+            -i "$GITHUB_SSH_PRIVATE_KEY" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=5 \
+            -T git@github.com 2>&1 || true
+    )
+
+    if [[ "$github_result" != *"successfully authenticated"* ]]; then
+
+        echo "$github_result" >&2
+
+        error "GitHub SSH authentication failed"
+    fi
+
+    echo "GitHub SSH authentication OK."
+}
+
+# ==============================================================================
+# Project setup
+# ==============================================================================
+
+setup_existing_repository() {
+
+    local project_dir="/home/${DEV_USER}/${PROJECT_NAME}"
+
+    echo
+    echo "Setting up existing repository..."
+    echo "  Target: $project_dir"
+
+    if run_remote test -e "$project_dir"; then
+        error "Project directory already exists: $project_dir"
+    fi
+
+    if is_github_ssh_url; then
+        setup_github_ssh
+    fi
+
+    run_remote git clone \
+        "$REPOSITORY_URL" \
+        "$project_dir"
+
+    if ! run_remote test -d "$project_dir/.git"; then
+        error "Repository clone failed: $project_dir"
+    fi
+
+    echo
+    echo "Repository cloned successfully."
+    echo "  Path: $project_dir"
+}
+
+setup_new_project() {
+
+    echo "New project setup is not implemented yet."
+}
+
+# ==============================================================================
+# Summary
+# ==============================================================================
+
+show_project_summary() {
+
+    echo
+    echo "Project target:"
+    echo
+    printf '  VM ID    : %s\n' "$VMID"
+    printf '  VM IP    : %s\n' "$VM_IP"
+    printf '  User     : %s\n' "$DEV_USER"
+
+    echo
+    echo "Project configuration:"
+    echo
+    printf '  Name     : %s\n' "$PROJECT_NAME"
+    printf '  Source   : %s\n' "$PROJECT_SOURCE"
+
+    if [[ -n "$PROJECT_TYPE" ]]; then
+        printf '  Type     : %s\n' "$PROJECT_TYPE"
+    fi
+
+    if [[ -n "$REPOSITORY_URL" ]]; then
+        printf '  Repo     : %s\n' "$REPOSITORY_URL"
+    fi
+
+    if [[ -n "$FRONTEND" ]]; then
+        printf '  Frontend : %s\n' "$FRONTEND"
+    fi
+
+    if [[ -n "$BACKEND" ]]; then
+        printf '  Backend  : %s\n' "$BACKEND"
+    fi
+
+    if [[ -n "$DATABASE_STRATEGY" ]]; then
+        printf '  Database : %s\n' "$DATABASE_STRATEGY"
+    fi
+
+    if [[ -n "$DATABASE_ENGINE" ]]; then
+        printf '  Engine   : %s\n' "$DATABASE_ENGINE"
+    fi
 }
 
 # ==============================================================================
@@ -129,6 +590,7 @@ while [[ $# -gt 0 ]]; do
             echo
             echo "  $0 --vm VMID"
             echo
+
             exit 0
             ;;
 
@@ -146,7 +608,7 @@ if [[ -z "$VMID" ]]; then
 fi
 
 # ==============================================================================
-# VM Validation
+# VM validation
 # ==============================================================================
 
 validate_vmid
@@ -157,240 +619,22 @@ VM_IP=$(get_vm_ip)
 validate_ssh
 
 # ==============================================================================
-# Project Setup
+# Project configuration
 # ==============================================================================
 
 echo "=== Project Setup ==="
-
 echo
 
-read -r -p "Project name: " project_name
+prompt_project_name
+prompt_project_source
 
-if [[ -z "$project_name" ]]; then
-    error "Project name cannot be empty"
-fi
+if [[ "$PROJECT_SOURCE" == "existing" ]]; then
 
-echo
+    prompt_repository_url
 
-echo "Project source:"
-echo "  1) New project"
-echo "  2) Existing repository"
+else
 
-source_choice=$(prompt_choice "Choice: " 2)
-
-case "$source_choice" in
-
-    1)
-        project_source="new"
-        ;;
-
-    2)
-        project_source="existing"
-        ;;
-
-esac
-
-echo
-
-echo "Project type:"
-echo "  1) Frontend"
-echo "  2) Backend / API"
-echo "  3) Full-stack"
-echo "  4) Other"
-
-type_choice=$(prompt_choice "Choice: " 4)
-
-case "$type_choice" in
-
-    1)
-        project_type="frontend"
-        ;;
-
-    2)
-        project_type="backend"
-        ;;
-
-    3)
-        project_type="fullstack"
-        ;;
-
-    4)
-        project_type="other"
-        ;;
-
-esac
-
-if [[ "$project_source" == "existing" ]]; then
-
-    echo
-
-    read -r -p "Repository URL: " repository_url
-
-    if [[ -z "$repository_url" ]]; then
-        error "Repository URL cannot be empty"
-    fi
-
-fi
-
-if [[ "$project_source" == "new" ]]; then
-
-    case "$project_type" in
-
-        frontend)
-
-            echo
-            echo "Frontend:"
-            echo "  1) Vite + React"
-            echo "  2) Angular"
-
-            frontend_choice=$(prompt_choice "Choice: " 2)
-
-            case "$frontend_choice" in
-
-                1)
-                    frontend="vite-react"
-                    ;;
-
-                2)
-                    frontend="angular"
-                    ;;
-
-            esac
-
-            ;;
-
-        backend)
-
-            echo
-            echo "Backend:"
-            echo "  1) Express"
-            echo "  2) Laravel"
-            echo "  3) Spring Boot"
-
-            backend_choice=$(prompt_choice "Choice: " 3)
-
-            case "$backend_choice" in
-
-                1)
-                    backend="express"
-                    ;;
-
-                2)
-                    backend="laravel"
-                    ;;
-
-                3)
-                    backend="spring-boot"
-                    ;;
-
-            esac
-
-            ;;
-
-        fullstack)
-
-            echo
-            echo "Frontend:"
-            echo "  1) Vite + React"
-            echo "  2) Angular"
-
-            frontend_choice=$(prompt_choice "Choice: " 2)
-
-            case "$frontend_choice" in
-
-                1)
-                    frontend="vite-react"
-                    ;;
-
-                2)
-                    frontend="angular"
-                    ;;
-
-            esac
-
-            echo
-            echo "Backend:"
-            echo "  1) Express"
-            echo "  2) Laravel"
-            echo "  3) Spring Boot"
-
-            backend_choice=$(prompt_choice "Choice: " 3)
-
-            case "$backend_choice" in
-
-                1)
-                    backend="express"
-                    ;;
-
-                2)
-                    backend="laravel"
-                    ;;
-
-                3)
-                    backend="spring-boot"
-                    ;;
-
-            esac
-
-            ;;
-
-    esac
-
-fi
-
-if [[ "$project_source" == "new" && -n "${backend:-}" ]]; then
-
-    echo
-    echo "Database:"
-    echo "  1) None"
-    echo "  2) Create database on this VM"
-    echo "  3) Use an existing database VM"
-
-    database_choice=$(prompt_choice "Choice: " 3)
-
-    case "$database_choice" in
-
-        1)
-            database_strategy="none"
-            ;;
-
-        2)
-            database_strategy="local"
-            ;;
-
-        3)
-            database_strategy="existing-vm"
-            ;;
-
-    esac
-
-    if [[ "$database_strategy" == "local" ]]; then
-
-        echo
-        echo "Database engine:"
-        echo "  1) PostgreSQL"
-        echo "  2) MariaDB"
-        echo "  3) MongoDB"
-
-        database_engine_choice=$(prompt_choice "Choice: " 3)
-
-        case "$database_engine_choice" in
-
-            1)
-                database_engine="postgresql"
-                ;;
-
-            2)
-                database_engine="mariadb"
-                ;;
-
-            3)
-                database_engine="mongodb"
-                ;;
-
-        esac
-
-    fi
+    configure_new_project
 
 fi
 
@@ -398,44 +642,18 @@ fi
 # Summary
 # ==============================================================================
 
-echo
+show_project_summary
 
-echo "Project target:"
-echo
+# ==============================================================================
+# Setup
+# ==============================================================================
 
-printf '  VM ID    : %s\n' "$VMID"
-printf '  VM IP    : %s\n' "$VM_IP"
-printf '  User     : %s\n' "$DEV_USER"
+if [[ "$PROJECT_SOURCE" == "existing" ]]; then
 
-echo
+    setup_existing_repository
 
-echo "Project configuration:"
-echo
+else
 
-printf '  Name     : %s\n' "$project_name"
-printf '  Source   : %s\n' "$project_source"
-printf '  Type     : %s\n' "$project_type"
+    setup_new_project
 
-if [[ "$project_source" == "existing" ]]; then
-    printf '  Repo     : %s\n' "$repository_url"
 fi
-
-if [[ -n "${frontend:-}" ]]; then
-    printf '  Frontend : %s\n' "$frontend"
-fi
-
-if [[ -n "${backend:-}" ]]; then
-    printf '  Backend  : %s\n' "$backend"
-fi
-
-if [[ -n "${database_strategy:-}" ]]; then
-    printf '  Database : %s\n' "$database_strategy"
-fi
-
-if [[ -n "${database_engine:-}" ]]; then
-    printf '  Engine   : %s\n' "$database_engine"
-fi
-
-echo
-
-echo "Project setup is not implemented yet."
