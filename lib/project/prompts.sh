@@ -187,6 +187,26 @@ prompt_database_engine() {
     esac
 }
 
+prompt_git_identity() {
+
+    echo
+    echo "Git configuration:"
+
+    local default_name="Developer"
+    local default_email="dev@example.com"
+    local git_name
+    local git_email
+
+    read -r -p "Git user name [$default_name]: " git_name
+    read -r -p "Git user email [$default_email]: " git_email
+
+    git_name="${git_name:-$default_name}"
+    git_email="${git_email:-$default_email}"
+
+    GIT_USER_NAME="$git_name"
+    GIT_USER_EMAIL="$git_email"
+}
+
 configure_new_project() {
 
     prompt_project_type
@@ -209,4 +229,6 @@ configure_new_project() {
     if [[ -n "$BACKEND" ]]; then
         prompt_database
     fi
+
+    prompt_git_identity
 }
