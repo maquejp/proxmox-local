@@ -9,6 +9,9 @@ source "${LIB_DIR}/project/git.sh"
 source "${LIB_DIR}/project/runtimes/node.sh"
 source "${LIB_DIR}/project/runtimes/php.sh"
 source "${LIB_DIR}/project/runtimes/java.sh"
+source "${LIB_DIR}/project/runtimes/postgresql.sh"
+source "${LIB_DIR}/project/runtimes/mariadb.sh"
+source "${LIB_DIR}/project/runtimes/mongodb.sh"
 
 source "${LIB_DIR}/project/generators/vite-react.sh"
 source "${LIB_DIR}/project/generators/angular.sh"
@@ -88,6 +91,25 @@ setup_new_project() {
             error "New project type '$PROJECT_TYPE' is not implemented yet"
             ;;
     esac
+
+    if [[ "$DATABASE_STRATEGY" == "local" ]]; then
+        echo
+        echo "Provisioning local database..."
+        case "$DATABASE_ENGINE" in
+            postgresql)
+                install_postgresql "$DATABASE_VERSION"
+                ;;
+            mariadb)
+                install_mariadb "$DATABASE_VERSION"
+                ;;
+            mongodb)
+                install_mongodb "$DATABASE_VERSION"
+                ;;
+            *)
+                error "Database engine '$DATABASE_ENGINE' is not supported."
+                ;;
+        esac
+    fi
 
     initialize_git
 

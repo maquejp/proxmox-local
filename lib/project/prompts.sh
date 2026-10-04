@@ -185,6 +185,49 @@ prompt_database_engine() {
             DATABASE_ENGINE="mongodb"
             ;;
     esac
+
+    prompt_database_version
+}
+
+prompt_database_version() {
+
+    echo
+    echo "Database version for $DATABASE_ENGINE:"
+
+    case "$DATABASE_ENGINE" in
+        postgresql)
+            echo "  1) PostgreSQL 17 (Latest)"
+            echo "  2) PostgreSQL 16"
+            echo "  3) PostgreSQL 15"
+            local choice
+            choice=$(prompt_choice "Choice: " 3)
+            case "$choice" in
+                1) DATABASE_VERSION="17" ;;
+                2) DATABASE_VERSION="16" ;;
+                3) DATABASE_VERSION="15" ;;
+            esac
+            ;;
+        mariadb)
+            echo "  1) MariaDB 11.4 (LTS)"
+            echo "  2) MariaDB 10.11 (LTS)"
+            local choice
+            choice=$(prompt_choice "Choice: " 2)
+            case "$choice" in
+                1) DATABASE_VERSION="11.4" ;;
+                2) DATABASE_VERSION="10.11" ;;
+            esac
+            ;;
+        mongodb)
+            echo "  1) MongoDB 8.0 (Latest)"
+            echo "  2) MongoDB 7.0"
+            local choice
+            choice=$(prompt_choice "Choice: " 2)
+            case "$choice" in
+                1) DATABASE_VERSION="8.0" ;;
+                2) DATABASE_VERSION="7.0" ;;
+            esac
+            ;;
+    esac
 }
 
 prompt_git_identity() {

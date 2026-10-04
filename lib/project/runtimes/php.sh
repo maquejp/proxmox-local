@@ -41,6 +41,8 @@ sudo dnf install -y \
     php-bcmath \
     php-pdo \
     php-opcache \
+    php-mysqlnd \
+    php-pgsql \
     unzip
 
 REMOTE
@@ -86,3 +88,4 @@ REMOTE
     echo "Composer installed:"
     run_remote composer --version
 }
+

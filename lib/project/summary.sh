@@ -36,4 +36,8 @@ show_project_summary() {
     if [[ -n "$DATABASE_ENGINE" ]]; then
         printf '  Engine   : %s\n' "$DATABASE_ENGINE"
     fi
+
+    if [[ -n "$DATABASE_VERSION" ]]; then
+        printf '  Version  : %s\n' "$DATABASE_VERSION"
+    fi
 }

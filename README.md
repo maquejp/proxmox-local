@@ -103,7 +103,7 @@ It handles:
 - **Automated SSH Configuration**: Dedicated GitHub SSH key generation, secure permission management, automated SSH client config generation, adding GitHub host key to `known_hosts`, and interactive testing of authentication.
 - **Runtime Installation**: Automatically updates the target VM to install Node.js 24, PHP 8.4 (via Remi repo) and Composer, or Java 25 (OpenJDK).
 - **Framework & Application Scaffolding**: Automatically installs requirements and scaffolds Vite + React (TypeScript), Angular, Express (TypeScript configuration with ES Modules, watch-scripts, and server templates), Laravel, or Spring Boot (Java 25 web starter).
-- **Database Provisioning Prompts**: Prompts for local engine installations (PostgreSQL, MariaDB, MongoDB) or connection configs.
+- **Database Provisioning**: Prompts for and provisions local engine installations (PostgreSQL 15/16/17, MariaDB 10.11/11.4, MongoDB 7.0/8.0), configures dedicated databases, users, permissions, and sets up appropriate PHP drivers (e.g. `php-pgsql`, `php-mysqlnd`). Or integrates with connection configurations for dedicated external database VMs.
 - **Git Initialization**: Automatically configures the Git author name and email inside the repository.
 
 The project setup workflow remains separate from generic VM provisioning and developer shell setup.
@@ -352,7 +352,7 @@ This launches a prompt sequence to gather options, outputting a summary of the c
 2. **Project Source**: Select between a **New project** (to scaffold a fresh app) or **Existing repository** (interactive git clone).
 3. **Automated SSH Setup** (for GitHub SSH URLs): Generates key pair `id_ed25519_github`, outputs the public key for you to add to GitHub, tests the authentication, and clones the repository.
 4. **Runtime & Framework Selection**: Select frontend (Vite+React or Angular) or backend (Express, Laravel, or Spring Boot). Runtimes (Node 24, PHP 8.4 + Composer, Java 25 OpenJDK) are automatically installed based on selections.
-5. **Database Configuration**: Choice between None, Local (PostgreSQL, MariaDB, MongoDB), or Existing VM.
+5. **Database Configuration & Versioning**: Choice between None, Local Database (PostgreSQL 15/16/17, MariaDB 10.11/11.4, MongoDB 7.0/8.0 with dedicated database and credentials automatically created), or Existing VM.
 6. **Git Config**: Automatically configures name and email for local commits.
 ## Development Workflow
 
@@ -534,3 +534,4 @@ The project setup has been verified for:
 - Remote Git repository initialization and automated commit configuration
 
 The project setup workflow remains cleanly separated from VM provisioning and generic developer shell configuration.
+
