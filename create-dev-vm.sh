@@ -33,9 +33,14 @@ OS_TYPE="l26"
 # ------------------------------------------------------------------------------
 
 DEV_USER="dev"
+
+# SSH key used by this provisioning script to access the VM.
 SSH_PRIVATE_KEY="/root/.ssh/id_ed25519_vm_admin"
 SSH_PUBLIC_KEY="/root/.ssh/id_ed25519_vm_admin.pub"
+
+# Developer public key that will be installed in the VM.
 DEVELOPER_SSH_PUBLIC_KEY=""
+
 SSH_KEYS_FILE=""
 SSH_TIMEOUT=60
 
@@ -58,48 +63,52 @@ IP=""
 # ==============================================================================
 
 usage() {
-
     cat <<EOF
-
 Usage:
 
-$0 --name NAME --id VMID --ip IP [OPTIONS]
+  $0 --name NAME --id VMID --ip IP --ssh-public-key PATH [OPTIONS]
 
 Required:
 
-  --name NAME       VM name
+  --name NAME
+        VM name
 
-  --id VMID         Proxmox VM ID
+  --id VMID
+        Proxmox VM ID
 
-  --ip IP           Static IPv4 address
+  --ip IP
+        Static IPv4 address
 
   --ssh-public-key PATH
-                    Developer SSH public key
+        Developer SSH public key
 
 Optional:
 
-  --cores N         CPU cores (default: ${CORES})
+  --cores N
+        CPU cores (default: ${CORES})
 
-  --memory SIZE     RAM (default: ${MEMORY})
+  --memory SIZE
+        RAM (default: ${MEMORY})
 
-  --disk SIZE       Disk size (default: ${DISK})
+  --disk SIZE
+        Disk size (default: ${DISK})
 
-  -h, --help        Show this help
+  -h, --help
+        Show this help
 
 Example:
 
-$0 --name taskmanager --id 201 --ip 192.168.1.201 \
-    --ssh-public-key /root/id_ed25519.pub
+  $0 --name taskmanager --id 201 --ip 192.168.1.201 \\
+      --ssh-public-key /root/id_ed25519.pub
 
-$0 --name big-project --id 202 --ip 192.168.1.202 \
-    --cores 8 --memory 24G --disk 100G \
-    --ssh-public-key /root/id_ed25519.pub
+  $0 --name big-project --id 202 --ip 192.168.1.202 \\
+      --cores 8 --memory 24G --disk 100G \\
+      --ssh-public-key /root/id_ed25519.pub
 
 EOF
 }
 
 error() {
-
     echo "Error: $*" >&2
     exit 1
 }
@@ -109,7 +118,6 @@ error() {
 # ------------------------------------------------------------------------------
 
 validate_vmid() {
-
     if [[ ! "$VMID" =~ ^[0-9]+$ ]]; then
         error "VMID must be numeric: $VMID"
     fi
@@ -128,7 +136,6 @@ validate_vmid() {
 # ------------------------------------------------------------------------------
 
 validate_ip() {
-
     local ip="$1"
     local IFS=.
 
@@ -146,7 +153,6 @@ validate_ip() {
            o2 > 255 ||
            o3 > 255 ||
            o4 > 255 )); then
-
         error "Invalid IPv4 address: $ip"
     fi
 }
@@ -156,19 +162,15 @@ validate_ip() {
 # ------------------------------------------------------------------------------
 
 validate_ip_not_configured() {
-
     local ip="$1"
 
     while read -r vmid; do
-
         [[ -z "$vmid" ]] && continue
 
         if qm config "$vmid" |
             grep -qE "^ipconfig[0-9]+:.*ip=${ip}(/|,|$)"; then
-
             error "IP $ip is already configured for VM $vmid"
         fi
-
     done < <(qm list | awk 'NR > 1 {print $1}')
 }
 
@@ -177,7 +179,6 @@ validate_ip_not_configured() {
 # ------------------------------------------------------------------------------
 
 validate_rocky_image() {
-
     if [[ ! -f "$ROCKY_IMAGE" ]]; then
         error "Rocky Linux image not found: $ROCKY_IMAGE"
     fi
@@ -188,7 +189,6 @@ validate_rocky_image() {
 # ------------------------------------------------------------------------------
 
 validate_cores() {
-
     if [[ ! "$CORES" =~ ^[1-9][0-9]*$ ]]; then
         error "Invalid CPU core count: $CORES"
     fi
@@ -199,7 +199,6 @@ validate_cores() {
 # ------------------------------------------------------------------------------
 
 validate_disk() {
-
     if [[ ! "$DISK" =~ ^[1-9][0-9]*G$ ]]; then
         error "Invalid disk size: $DISK"
     fi
@@ -210,7 +209,6 @@ validate_disk() {
 # ------------------------------------------------------------------------------
 
 validate_ssh_key() {
-
     if [[ ! -f "$SSH_PRIVATE_KEY" ]]; then
         error "SSH private key not found: $SSH_PRIVATE_KEY"
     fi
@@ -233,7 +231,6 @@ validate_ssh_key() {
 # ------------------------------------------------------------------------------
 
 validate_developer_ssh_key() {
-
     if [[ -z "$DEVELOPER_SSH_PUBLIC_KEY" ]]; then
         error "Developer SSH public key is required: use --ssh-public-key"
     fi
@@ -252,7 +249,6 @@ validate_developer_ssh_key() {
 # ------------------------------------------------------------------------------
 
 prepare_ssh_keys() {
-
     SSH_KEYS_FILE=$(mktemp)
 
     cat \
@@ -272,7 +268,6 @@ prepare_ssh_keys() {
 # ------------------------------------------------------------------------------
 
 memory_to_mib() {
-
     local value="$1"
 
     if [[ "$value" =~ ^([0-9]+)G$ ]]; then
@@ -293,7 +288,6 @@ memory_to_mib() {
 # ------------------------------------------------------------------------------
 
 create_vm() {
-
     echo "Creating VM $VMID ($NAME)..."
 
     qm create "$VMID" \
@@ -315,7 +309,6 @@ create_vm() {
 # ------------------------------------------------------------------------------
 
 configure_disk() {
-
     echo "Importing Rocky Linux image..."
 
     qm importdisk \
@@ -347,7 +340,6 @@ configure_disk() {
 # ------------------------------------------------------------------------------
 
 configure_cloud_init() {
-
     echo "Configuring Cloud-Init..."
 
     qm set "$VMID" \
@@ -369,7 +361,6 @@ configure_cloud_init() {
 # ------------------------------------------------------------------------------
 
 remove_stale_ssh_host_key() {
-
     echo "Removing any previous SSH host key for $IP..."
 
     ssh-keygen \
@@ -383,13 +374,11 @@ remove_stale_ssh_host_key() {
 # ------------------------------------------------------------------------------
 
 wait_for_ssh() {
-
     echo "Waiting for SSH..."
 
     local attempts=$((SSH_TIMEOUT / 2))
 
     for ((i = 1; i <= attempts; i++)); do
-
         if ssh \
             -i "$SSH_PRIVATE_KEY" \
             -o BatchMode=yes \
@@ -413,97 +402,62 @@ wait_for_ssh() {
 # ==============================================================================
 
 while [[ $# -gt 0 ]]; do
-
     case "$1" in
 
         --name)
-
             [[ $# -ge 2 ]] || error "--name requires a value"
-
             NAME="$2"
-
             shift 2
-
             ;;
 
         --id)
-
             [[ $# -ge 2 ]] || error "--id requires a value"
-
             VMID="$2"
-
             shift 2
-
             ;;
 
         --ip)
-
             [[ $# -ge 2 ]] || error "--ip requires a value"
-
             IP="$2"
-
             shift 2
-
             ;;
 
         --cores)
-
             [[ $# -ge 2 ]] || error "--cores requires a value"
-
             CORES="$2"
-
             shift 2
-
             ;;
 
         --memory)
-
             [[ $# -ge 2 ]] || error "--memory requires a value"
-
             MEMORY="$2"
-
             shift 2
-
             ;;
 
         --disk)
-
             [[ $# -ge 2 ]] || error "--disk requires a value"
-
             DISK="$2"
-
             shift 2
-
             ;;
 
         --ssh-public-key)
-
             [[ $# -ge 2 ]] || error "--ssh-public-key requires a value"
-
             DEVELOPER_SSH_PUBLIC_KEY="$2"
-
             shift 2
-
             ;;
 
         -h|--help)
-
             usage
-
             exit 0
-
             ;;
 
         *)
-
             echo "Error: unknown option: $1" >&2
             usage >&2
             exit 1
-
             ;;
 
     esac
-
 done
 
 # ==============================================================================
@@ -513,6 +467,8 @@ done
 [[ -n "$NAME" ]] || error "--name is required"
 [[ -n "$VMID" ]] || error "--id is required"
 [[ -n "$IP" ]] || error "--ip is required"
+[[ -n "$DEVELOPER_SSH_PUBLIC_KEY" ]] ||
+    error "--ssh-public-key is required"
 
 # ==============================================================================
 # Validation
@@ -526,6 +482,7 @@ validate_cores
 validate_disk
 validate_ssh_key
 validate_developer_ssh_key
+
 prepare_ssh_keys
 
 MEMORY_MIB=$(memory_to_mib "$MEMORY")
@@ -535,9 +492,7 @@ MEMORY_MIB=$(memory_to_mib "$MEMORY")
 # ==============================================================================
 
 echo
-
 echo "Development VM configuration:"
-
 echo "  Name                : $NAME"
 echo "  VM ID               : $VMID"
 echo "  IP                  : $IP"
@@ -548,7 +503,6 @@ echo "  Storage             : $STORAGE"
 echo "  Bridge              : $BRIDGE"
 echo "  SSH automation key  : $SSH_PUBLIC_KEY"
 echo "  SSH developer key   : $DEVELOPER_SSH_PUBLIC_KEY"
-
 echo
 
 # ==============================================================================
@@ -561,7 +515,6 @@ configure_cloud_init
 
 # A recreated disposable VM may reuse an IP previously associated with
 # another VM. Remove that stale host key before accepting the new one.
-
 remove_stale_ssh_host_key
 
 echo "Starting VM..."
@@ -577,12 +530,9 @@ wait_for_ssh
 # ==============================================================================
 
 echo
-
 echo "Development VM ready:"
-
 echo "  VM ID : $VMID"
 echo "  Name  : $NAME"
 echo "  IP    : $IP"
 echo "  SSH   : ${DEV_USER}@${IP}"
-
 echo
