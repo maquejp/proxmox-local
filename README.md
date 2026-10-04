@@ -135,13 +135,16 @@ The script:
 - destroys the VM with `qm destroy --purge`
 - verifies that the VM has been removed
 
-Protected VM IDs are configured directly in the script:
+Protected VM IDs are configured in the script (and can be overridden via the `PROTECTED_VMIDS_OVERRIDE` environment variable):
 
     PROTECTED_VMIDS=(100)
 
 Multiple VMs can be protected:
 
     PROTECTED_VMIDS=(100 201 250)
+
+    # Or override via environment
+    PROTECTED_VMIDS_OVERRIDE="100 201" ./delete-dev-vm.sh
 
 Protected VMs remain visible in the interactive VM list but cannot be deleted by the script.
 
@@ -248,7 +251,7 @@ Example manual connection:
 
 ## Repository Structure
 
-The structure is intentionally kept small.
+The structure is intentionally kept modular.
 
     .
     ├── README.md
@@ -256,7 +259,20 @@ The structure is intentionally kept small.
     ├── delete-dev-vm.sh
     ├── setup-dev-shell.sh
     ├── setup-dev-project.sh
-    └── profiles/
+    └── lib/
+        ├── common.sh
+        ├── config.sh
+        ├── vm.sh
+        └── project/
+            ├── existing-repository.sh
+            ├── generators/
+            ├── github-ssh.sh
+            ├── git.sh
+            ├── new-project.sh
+            ├── prompts.sh
+            ├── runtimes/
+            ├── summary.sh
+            └── ...
 
 The structure may evolve as requirements become clearer.
 
@@ -296,6 +312,14 @@ Defaults can be overridden:
         --memory 24G \
         --disk 100G
 
+    # Override Rocky image path if needed
+    ./create-dev-vm.sh \
+        --name test \
+        --id 203 \
+        --ip 192.168.1.203 \
+        --ssh-public-key /root/id_ed25519.pub \
+        --rocky-image /var/lib/vz/template/qcow2/custom-rocky.qcow2
+
 ### Delete a Development VM
 
 To interactively select a VM for deletion:
@@ -306,8 +330,23 @@ To delete a specific VM:
 
     ./delete-dev-vm.sh 201
 
-The script asks for confirmation before permanently deleting the VM.
+To skip confirmation (non-interactive):
 
+    ./delete-dev-vm.sh 201 --yes
+
+To force stop if shutdown times out:
+
+    ./delete-dev-vm.sh 201 --force
+
+To preview actions without executing:
+
+    ./delete-dev-vm.sh --dry-run 201
+
+To customize shutdown timeout:
+
+    ./delete-dev-vm.sh 201 --shutdown-timeout 120
+
+The script asks for confirmation before permanently deleting the VM (unless `--yes` is used).
 Protected VM IDs cannot be deleted by the script.
 
 ### Configure the Developer Shell
@@ -441,6 +480,7 @@ The following has been validated:
 - complete development VM deletion
 - protected VM deletion prevention
 - interactive VM deletion
+- dry-run, force stop, and non-interactive deletion options
 - developer shell provisioning
 - Git installation
 - `bat` installation
@@ -451,6 +491,8 @@ The following has been validated:
 - Git alias configuration
 - Node/npm alias configuration
 - user-local `PATH` configuration
+- Resilient binary downloads with retries
+- Post-installation version verification for tools
 
 ### VM Provisioning Validation
 
