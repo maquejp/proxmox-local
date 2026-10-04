@@ -5,6 +5,7 @@
 # ==============================================================================
 
 NODE_MAJOR_VERSION="24"
+PHP_VERSION="8.4"
 
 # ==============================================================================
 # Node.js
@@ -41,6 +42,91 @@ REMOTE
     echo "Node.js installed:"
     run_remote node --version
     run_remote npm --version
+}
+
+# ==============================================================================
+# PHP / Composer
+# ==============================================================================
+
+install_php() {
+
+    if run_remote php -r 'exit(version_compare(PHP_VERSION, "8.4", ">=") ? 0 : 1)' \
+        >/dev/null 2>&1; then
+
+        echo "PHP already installed:"
+        run_remote php --version | head -n 1
+        return
+    fi
+
+    echo "Installing PHP ${PHP_VERSION}..."
+
+    run_remote bash -s -- "$PHP_VERSION" <<'REMOTE'
+
+set -euo pipefail
+
+PHP_VERSION="$1"
+
+sudo dnf install -y \
+    https://rpms.remirepo.net/enterprise/remi-release-10.rpm
+
+sudo dnf module reset -y php
+sudo dnf module enable -y "php:remi-${PHP_VERSION}"
+
+sudo dnf install -y \
+    php \
+    php-cli \
+    php-common \
+    php-mbstring \
+    php-xml \
+    php-curl \
+    php-zip \
+    php-bcmath \
+    php-pdo \
+    php-opcache \
+    unzip
+
+REMOTE
+
+    echo "PHP installed:"
+    run_remote php --version | head -n 1
+}
+
+install_composer() {
+
+    if run_remote command -v composer >/dev/null 2>&1; then
+        echo "Composer already installed:"
+        run_remote composer --version
+        return
+    fi
+
+    echo "Installing Composer..."
+
+    run_remote bash -s <<'REMOTE'
+
+set -euo pipefail
+
+EXPECTED_CHECKSUM="$(curl -s https://composer.github.io/installer.sig)"
+
+php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+
+ACTUAL_CHECKSUM="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
+
+if [[ "$EXPECTED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]]; then
+    rm -f composer-setup.php
+    echo "Invalid Composer installer checksum" >&2
+    exit 1
+fi
+
+sudo php composer-setup.php \
+    --install-dir=/usr/local/bin \
+    --filename=composer
+
+rm -f composer-setup.php
+
+REMOTE
+
+    echo "Composer installed:"
+    run_remote composer --version
 }
 
 # ==============================================================================
@@ -117,14 +203,12 @@ cd "$PROJECT_DIR"
 npm init -y
 
 npm install express
+
 npm install --save-dev \
     @types/express \
     @types/node \
     tsx \
     typescript
-
-cat > package.json.tmp <<'EOF'
-EOF
 
 node <<'NODE'
 const fs = require("fs");
@@ -144,8 +228,6 @@ fs.writeFileSync(
     JSON.stringify(packageJson, null, 2) + "\n"
 );
 NODE
-
-rm -f package.json.tmp
 
 cat > tsconfig.json <<'EOF'
 {
@@ -179,6 +261,26 @@ app.listen(port, "0.0.0.0", () => {
   console.log(`API listening on port ${port}`);
 });
 EOF
+
+REMOTE
+}
+
+create_laravel_project() {
+
+    echo
+    echo "Creating Laravel project..."
+    echo
+
+    run_remote bash -s -- "$PROJECT_NAME" "$DEV_USER" <<'REMOTE'
+
+set -euo pipefail
+
+PROJECT_NAME="$1"
+DEV_USER="$2"
+
+cd "/home/${DEV_USER}"
+
+composer create-project laravel/laravel "$PROJECT_NAME"
 
 REMOTE
 }
@@ -248,6 +350,14 @@ setup_express_project() {
     initialize_git
 }
 
+setup_laravel_project() {
+
+    install_php
+    install_composer
+    create_laravel_project
+    initialize_git
+}
+
 setup_new_project() {
 
     local project_dir="/home/${DEV_USER}/${PROJECT_NAME}"
@@ -274,6 +384,9 @@ setup_new_project() {
             case "$BACKEND" in
                 express)
                     setup_express_project
+                    ;;
+                laravel)
+                    setup_laravel_project
                     ;;
                 *)
                     error "Backend '$BACKEND' is not implemented yet"
