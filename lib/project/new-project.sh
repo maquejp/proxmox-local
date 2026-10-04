@@ -23,32 +23,27 @@ source "${LIB_DIR}/project/generators/spring-boot.sh"
 setup_vite_react_project() {
     install_node
     create_vite_react_project
-    initialize_git
 }
 
 setup_angular_project() {
     install_node
     create_angular_project
-    initialize_git
 }
 
 setup_express_project() {
     install_node
     create_express_project
-    initialize_git
 }
 
 setup_laravel_project() {
     install_php
     install_composer
     create_laravel_project
-    initialize_git
 }
 
 setup_spring_boot_project() {
     install_java
     create_spring_boot_project
-    initialize_git
 }
 
 setup_new_project() {
@@ -93,6 +88,8 @@ setup_new_project() {
             error "New project type '$PROJECT_TYPE' is not implemented yet"
             ;;
     esac
+
+    initialize_git
 
     echo
     echo "Project created successfully."
