@@ -96,6 +96,93 @@ npx @angular/cli@latest new \
 REMOTE
 }
 
+create_express_project() {
+
+    echo
+    echo "Creating Express project..."
+    echo
+
+    run_remote bash -s -- "$PROJECT_NAME" "$DEV_USER" <<'REMOTE'
+
+set -euo pipefail
+
+PROJECT_NAME="$1"
+DEV_USER="$2"
+PROJECT_DIR="/home/${DEV_USER}/${PROJECT_NAME}"
+
+mkdir -p "${PROJECT_DIR}/src"
+
+cd "$PROJECT_DIR"
+
+npm init -y
+
+npm install express
+npm install --save-dev \
+    @types/express \
+    @types/node \
+    tsx \
+    typescript
+
+cat > package.json.tmp <<'EOF'
+EOF
+
+node <<'NODE'
+const fs = require("fs");
+
+const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+
+packageJson.scripts = {
+    dev: "tsx watch src/index.ts",
+    build: "tsc",
+    start: "node dist/index.js"
+};
+
+packageJson.type = "module";
+
+fs.writeFileSync(
+    "package.json",
+    JSON.stringify(packageJson, null, 2) + "\n"
+);
+NODE
+
+rm -f package.json.tmp
+
+cat > tsconfig.json <<'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
+EOF
+
+cat > src/index.ts <<'EOF'
+import express from "express";
+
+const app = express();
+const port = Number(process.env.PORT) || 3000;
+
+app.get("/", (_req, res) => {
+  res.json({
+    message: "Express API is running",
+  });
+});
+
+app.listen(port, "0.0.0.0", () => {
+  console.log(`API listening on port ${port}`);
+});
+EOF
+
+REMOTE
+}
+
 # ==============================================================================
 # Git
 # ==============================================================================
@@ -154,11 +241,14 @@ setup_angular_project() {
     initialize_git
 }
 
-setup_new_project() {
+setup_express_project() {
 
-    if [[ "$PROJECT_TYPE" != "frontend" ]]; then
-        error "New project type '$PROJECT_TYPE' is not implemented yet"
-    fi
+    install_node
+    create_express_project
+    initialize_git
+}
+
+setup_new_project() {
 
     local project_dir="/home/${DEV_USER}/${PROJECT_NAME}"
 
@@ -166,15 +256,32 @@ setup_new_project() {
         error "Project directory already exists: $project_dir"
     fi
 
-    case "$FRONTEND" in
-        vite-react)
-            setup_vite_react_project
+    case "$PROJECT_TYPE" in
+        frontend)
+            case "$FRONTEND" in
+                vite-react)
+                    setup_vite_react_project
+                    ;;
+                angular)
+                    setup_angular_project
+                    ;;
+                *)
+                    error "Frontend '$FRONTEND' is not implemented yet"
+                    ;;
+            esac
             ;;
-        angular)
-            setup_angular_project
+        backend)
+            case "$BACKEND" in
+                express)
+                    setup_express_project
+                    ;;
+                *)
+                    error "Backend '$BACKEND' is not implemented yet"
+                    ;;
+            esac
             ;;
         *)
-            error "Frontend '$FRONTEND' is not implemented yet"
+            error "New project type '$PROJECT_TYPE' is not implemented yet"
             ;;
     esac
 
