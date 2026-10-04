@@ -7,8 +7,6 @@ source "${LIB_DIR}/config.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/vm.sh"
 
-trap '[[ -n "${SSH_KEYS_FILE:-}" ]] && rm -f "$SSH_KEYS_FILE"' EXIT
-
 # Defaults
 CORES=6
 MEMORY="16G"
@@ -166,6 +164,52 @@ memory_to_mib() {
   error "Invalid memory size: $value"
 }
 
+prompt_if_empty() {
+  local var_name="$1"
+  local prompt="$2"
+  local default="${3:-}"
+  local value="${!var_name}"
+
+  if [[ -n "$value" ]]; then
+    return
+  fi
+
+  if ! [[ -t 0 ]]; then
+    if [[ -n "$default" ]]; then
+      eval "$var_name=\"$default\""
+      return
+    fi
+    error "$var_name is required"
+  fi
+
+  local response
+  if [[ -n "$default" ]]; then
+    read -r -p "$prompt [$default]: " response
+    response="${response:-$default}"
+  else
+    read -r -p "$prompt: " response
+    if [[ -z "$response" ]]; then
+      error "$prompt cannot be empty"
+    fi
+  fi
+  eval "$var_name=\"$response\""
+}
+
+prompt_ssh_key_if_empty() {
+  if [[ -n "$DEVELOPER_SSH_PUBLIC_KEY" ]]; then
+    return
+  fi
+  if ! [[ -t 0 ]]; then
+    error "--ssh-public-key is required"
+  fi
+  local response
+  while [[ -z "$response" ]]; do
+    read -r -p "Developer SSH public key path: " response
+  done
+  DEVELOPER_SSH_PUBLIC_KEY="$response"
+}
+
+
 create_vm() {
   log_info "Creating VM $VMID ($NAME)..."
   qm create "$VMID" \
@@ -262,11 +306,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Required
-[[ -n "$NAME" ]] || error "--name is required"
-[[ -n "$VMID" ]] || error "--id is required"
-[[ -n "$IP" ]] || error "--ip is required"
-[[ -n "$DEVELOPER_SSH_PUBLIC_KEY" ]] || error "--ssh-public-key is required"
+# Interactive prompts if not provided
+if [[ $# -eq 0 ]]; then
+  log_info "No arguments provided, running in interactive mode..."
+  echo
+fi
+
+prompt_if_empty "NAME" "VM name"
+prompt_if_empty "VMID" "VM ID"
+prompt_if_empty "IP" "VM static IP"
+prompt_ssh_key_if_empty
+
+# Allow interactive override of optional values
+if [[ $# -eq 0 ]] && [[ -t 0 ]]; then
+  read -r -p "CPU cores [$CORES]: " cores_resp; cores_resp="${cores_resp:-$CORES}"; CORES="$cores_resp"
+  read -r -p "Memory [$MEMORY]: " memory_resp; memory_resp="${memory_resp:-$MEMORY}"; MEMORY="$memory_resp"
+  read -r -p "Disk [$DISK]: " disk_resp; disk_resp="${disk_resp:-$DISK}"; DISK="$disk_resp"
+  read -r -p "Rocky image path [$ROCKY_IMAGE]: " rocky_resp; rocky_resp="${rocky_resp:-$ROCKY_IMAGE}"; ROCKY_IMAGE="$rocky_resp"
+fi
 
 # Validation
 validate_vmid_available
