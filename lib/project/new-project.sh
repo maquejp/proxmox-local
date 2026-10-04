@@ -8,11 +8,13 @@ source "${LIB_DIR}/project/git.sh"
 
 source "${LIB_DIR}/project/runtimes/node.sh"
 source "${LIB_DIR}/project/runtimes/php.sh"
+source "${LIB_DIR}/project/runtimes/java.sh"
 
 source "${LIB_DIR}/project/generators/vite-react.sh"
 source "${LIB_DIR}/project/generators/angular.sh"
 source "${LIB_DIR}/project/generators/express.sh"
 source "${LIB_DIR}/project/generators/laravel.sh"
+source "${LIB_DIR}/project/generators/spring-boot.sh"
 
 # ==============================================================================
 # Project setup
@@ -40,6 +42,12 @@ setup_laravel_project() {
     install_php
     install_composer
     create_laravel_project
+    initialize_git
+}
+
+setup_spring_boot_project() {
+    install_java
+    create_spring_boot_project
     initialize_git
 }
 
@@ -72,6 +80,9 @@ setup_new_project() {
                     ;;
                 laravel)
                     setup_laravel_project
+                    ;;
+                spring-boot)
+                    setup_spring_boot_project
                     ;;
                 *)
                     error "Backend '$BACKEND' is not implemented yet"
