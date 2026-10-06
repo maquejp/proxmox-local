@@ -182,7 +182,7 @@ prompt_if_empty() {
     error "$var_name is required"
   fi
 
-  local response
+  local response=""
   if [[ -n "$default" ]]; then
     read -r -p "$prompt [$default]: " response
     response="${response:-$default}"
@@ -202,7 +202,7 @@ prompt_ssh_key_if_empty() {
   if ! [[ -t 0 ]]; then
     error "--ssh-public-key is required"
   fi
-  local response
+  local response=""
   while [[ -z "$response" ]]; do
     read -r -p "Developer SSH public key path: " response
   done
