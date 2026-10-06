@@ -25,7 +25,7 @@ OS_TYPE="${PROXMOX_OS_TYPE}"
 DEV_USER="${DEV_USER}"
 SSH_PRIVATE_KEY="${SSH_PRIVATE_KEY_ADMIN}"
 SSH_PUBLIC_KEY="${SSH_PUBLIC_KEY_ADMIN}"
-DEVELOPER_SSH_PUBLIC_KEY=""
+DEVELOPER_SSH_PUBLIC_KEY="${DEVELOPER_SSH_PUBLIC_KEY_DEFAULT}"
 SSH_KEYS_FILE=""
 SSH_TIMEOUT="${SSH_TIMEOUT}"
 
@@ -41,15 +41,15 @@ usage() {
   cat <<EOF
 Usage:
 
-  $0 --name NAME --id VMID --ip IP --ssh-public-key PATH [OPTIONS]
+  $0 --name NAME --id VMID --ip IP [OPTIONS]
 
 Required:
   --name NAME           VM name
   --id VMID             Proxmox VM ID
   --ip IP               Static IPv4 address
-  --ssh-public-key PATH Developer SSH public key
 
 Optional:
+  --ssh-public-key PATH Developer SSH public key (default: ${DEVELOPER_SSH_PUBLIC_KEY})
   --cores N             CPU cores (default: ${CORES})
   --memory SIZE         RAM (default: ${MEMORY})
   --disk SIZE           Disk size (default: ${DISK})

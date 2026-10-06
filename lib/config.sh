@@ -11,6 +11,7 @@ DEFAULT_PROTECTED_VMIDS=(100)
 # SSH configuration
 SSH_PRIVATE_KEY_ADMIN="/root/.ssh/id_ed25519_vm_admin"
 SSH_PUBLIC_KEY_ADMIN="/root/.ssh/id_ed25519_vm_admin.pub"
+DEVELOPER_SSH_PUBLIC_KEY_DEFAULT="/root/.ssh/id_ed25519.pub"
 SSH_GITHUB_PRIVATE_KEY_TEMPLATE="/home/${DEV_USER}/.ssh/id_ed25519_github"
 SSH_GITHUB_PUBLIC_KEY_TEMPLATE="/home/${DEV_USER}/.ssh/id_ed25519_github.pub"
 SSH_TIMEOUT=60
