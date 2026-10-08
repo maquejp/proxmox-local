@@ -4,6 +4,29 @@
 # Project prompts and configuration
 # ==============================================================================
 
+prompt_vmid() {
+    echo "Available VMs:"
+    qm list | awk 'NR>1 {print "  " $1 " - " $2 " (" $3 ")"}'
+    echo
+
+    while true; do
+        read -r -p "VM ID: " VMID
+        if [[ -z "$VMID" ]]; then
+            echo "VM ID cannot be empty. Please try again." >&2
+            continue
+        fi
+        if [[ ! "$VMID" =~ ^[0-9]+$ ]]; then
+            echo "VM ID must be numeric. Please try again." >&2
+            continue
+        fi
+        if ! qm status "$VMID" &>/dev/null; then
+            echo "VM ID $VMID does not exist. Please try again." >&2
+            continue
+        fi
+        break
+    done
+}
+
 prompt_choice() {
 
     local prompt="$1"

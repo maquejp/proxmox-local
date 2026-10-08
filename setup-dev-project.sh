@@ -92,7 +92,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$VMID" ]]; then
-    error "--vm is required"
+    prompt_vmid
 fi
 
 # ==============================================================================
