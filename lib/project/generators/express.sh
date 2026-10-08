@@ -84,5 +84,28 @@ app.listen(port, "0.0.0.0", () => {
 });
 EOF2
 
+# Create systemd service for Express
+cat <<EOF3 | sudo tee /etc/systemd/system/${PROJECT_NAME}.service >/dev/null
+[Unit]
+Description=Express Backend API (${PROJECT_NAME})
+After=network.target postgresql-17.service mariadb.service mongod.service
+
+[Service]
+Type=simple
+User=${DEV_USER}
+WorkingDirectory=${PROJECT_DIR}
+ExecStart=/usr/bin/npm run dev
+Restart=always
+Environment=PORT=3000
+Environment=NODE_ENV=development
+
+[Install]
+WantedBy=multi-user.target
+EOF3
+
+sudo systemctl daemon-reload
+sudo systemctl enable "${PROJECT_NAME}.service"
+sudo systemctl start "${PROJECT_NAME}.service"
+
 REMOTE
 }
