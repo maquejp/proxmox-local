@@ -8,15 +8,11 @@ install_postgresql() {
     local version="$1"
     local psql_bin="/usr/pgsql-${version}/bin/psql"
 
-    if run_remote test -x "$psql_bin" >/dev/null 2>&1; then
-        echo "PostgreSQL ${version} is already installed."
-        return
-    fi
+    if ! run_remote test -x "$psql_bin" >/dev/null 2>&1; then
+        echo "Installing PostgreSQL ${version}..."
 
-    echo "Installing PostgreSQL ${version}..."
-
-    # Setup the PostgreSQL official repo and install
-    run_remote bash -s -- "$version" <<'REMOTE'
+        # Setup the PostgreSQL official repo and install
+        run_remote bash -s -- "$version" <<'REMOTE'
 set -euo pipefail
 VERSION="$1"
 
@@ -43,6 +39,7 @@ fi
 PG_HBA="/var/lib/pgsql/${VERSION}/data/pg_hba.conf"
 PG_CONF="/var/lib/pgsql/${VERSION}/data/postgresql.conf"
 
+sudo sed -i '/^local\s\+all\s\+all\s\+peer/i local   all             postgres                                peer' "$PG_HBA"
 sudo sed -i 's/^local\s\+all\s\+all\s\+peer/local   all             all                                     md5/' "$PG_HBA"
 sudo sed -i 's/^host\s\+all\s\+all\s\+127.0.0.1\/32\s\+ident/host    all             all             127.0.0.1\/32            md5/' "$PG_HBA"
 sudo sed -i 's/^host\s\+all\s\+all\s\+::1\/128\s\+ident/host    all             all             ::1\/128                 md5/' "$PG_HBA"
@@ -63,6 +60,20 @@ sudo systemctl enable "postgresql-${VERSION}"
 sudo systemctl restart "postgresql-${VERSION}"
 
 REMOTE
+    else
+        echo "PostgreSQL ${version} is already installed."
+        # Automatically repair pg_hba.conf if it was left in a broken state from a prior run
+        run_remote bash -s -- "$version" <<'REMOTE'
+set -euo pipefail
+VERSION="$1"
+PG_HBA="/var/lib/pgsql/${VERSION}/data/pg_hba.conf"
+if ! sudo grep -q "local.*postgres.*peer" "$PG_HBA"; then
+    sudo sed -i '/^local\s\+all\s\+all\s\+peer/i local   all             postgres                                peer' "$PG_HBA"
+    sudo sed -i 's/^local\s\+all\s\+all\s\+peer/local   all             all                                     md5/' "$PG_HBA"
+    sudo systemctl restart "postgresql-${VERSION}"
+fi
+REMOTE
+    fi
 
     echo "Configuring PostgreSQL database and user for project '${PROJECT_NAME}'..."
 

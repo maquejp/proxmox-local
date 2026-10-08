@@ -46,6 +46,13 @@ confirm() {
   local default="${2:-n}"
   local response
 
+  local options
+  if [[ "$default" =~ ^[Yy]$ ]]; then
+    options="Y/n"
+  else
+    options="y/N"
+  fi
+
   if [[ ! -t 0 ]]; then
     if [[ "$default" =~ ^[Yy]$ ]]; then
       return 0
@@ -54,7 +61,7 @@ confirm() {
   fi
 
   while true; do
-    read -r -p "${prompt} [${default^^}/${default,,}]: " response
+    read -r -p "${prompt} [${options}]: " response
     response="${response:-$default}"
 
     case "$response" in
