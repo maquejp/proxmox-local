@@ -18,6 +18,21 @@ validate_vmid() {
   fi
 }
 
+validate_ssh_key() {
+  if [[ ! -f "$SSH_PRIVATE_KEY" ]]; then
+    error "SSH private key not found: $SSH_PRIVATE_KEY"
+  fi
+  if [[ ! -r "$SSH_PRIVATE_KEY" ]]; then
+    error "SSH private key is not readable: $SSH_PRIVATE_KEY"
+  fi
+  if [[ ! -f "$SSH_PUBLIC_KEY" ]]; then
+    error "SSH public key not found: $SSH_PUBLIC_KEY"
+  fi
+  if [[ ! -r "$SSH_PUBLIC_KEY" ]]; then
+    error "SSH public key is not readable: $SSH_PUBLIC_KEY"
+  fi
+}
+
 validate_vm_running() {
   local status
   status=$(qm status "$VMID" | awk '{print $2}')
