@@ -53,6 +53,12 @@ DB_NAME="$1"
 DB_USER="$2"
 DB_PASS="$3"
 
+# Ensure MongoDB binds to all interfaces to allow external GUI access
+if [ -f /etc/mongod.conf ]; then
+    sudo sed -i 's/bindIp: 127.0.0.1/bindIp: 0.0.0.0/' /etc/mongod.conf
+    sudo systemctl restart mongod
+fi
+
 if command -v mongosh >/dev/null 2>&1; then
     mongosh "$DB_NAME" --eval "
         db.createUser({
@@ -69,6 +75,12 @@ else
             roles: [{ role: 'dbOwner', db: '$DB_NAME' }]
         })
     " || echo "User might already exist or auth not configured."
+fi
+
+# Open firewall port if firewalld is active
+if sudo systemctl is-active --quiet firewalld; then
+    sudo firewall-cmd --add-port=27017/tcp --permanent >/dev/null 2>&1 || true
+    sudo firewall-cmd --reload >/dev/null 2>&1 || true
 fi
 
 REMOTE

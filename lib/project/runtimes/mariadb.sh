@@ -49,15 +49,29 @@ REMOTE
 
     run_remote bash -s -- "$db_name" "$db_user" "$db_pass" <<'REMOTE'
 set -euo pipefail
-DB_NAME="$2"
-DB_USER="$3"
-DB_PASS="$4"
+DB_NAME="$1"
+DB_USER="$2"
+DB_PASS="$3"
 
-# Create database if not exists and user
+# Ensure MariaDB binds to all interfaces to allow external GUI access
+if [ -f /etc/my.cnf.d/mariadb-server.cnf ]; then
+    sudo sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' /etc/my.cnf.d/mariadb-server.cnf || true
+fi
+sudo systemctl restart mariadb
+
+# Create database if not exists and user (both local and external '%')
 sudo mariadb -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 sudo mariadb -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
+sudo mariadb -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASS}';"
 sudo mariadb -e "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';"
+sudo mariadb -e "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';"
 sudo mariadb -e "FLUSH PRIVILEGES;"
+
+# Open firewall port if firewalld is active
+if sudo systemctl is-active --quiet firewalld; then
+    sudo firewall-cmd --add-port=3306/tcp --permanent >/dev/null 2>&1 || true
+    sudo firewall-cmd --reload >/dev/null 2>&1 || true
+fi
 
 REMOTE
 

@@ -41,9 +41,21 @@ fi
 # Configure host-based authentication (pg_hba.conf) for local development
 # This enables passwordless local login for development and simple standard passwords
 PG_HBA="/var/lib/pgsql/${VERSION}/data/pg_hba.conf"
+PG_CONF="/var/lib/pgsql/${VERSION}/data/postgresql.conf"
+
 sudo sed -i 's/^local\s\+all\s\+all\s\+peer/local   all             all                                     md5/' "$PG_HBA"
 sudo sed -i 's/^host\s\+all\s\+all\s\+127.0.0.1\/32\s\+ident/host    all             all             127.0.0.1\/32            md5/' "$PG_HBA"
 sudo sed -i 's/^host\s\+all\s\+all\s\+::1\/128\s\+ident/host    all             all             ::1\/128                 md5/' "$PG_HBA"
+
+# Allow connections from any IP
+sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" "$PG_CONF"
+echo "host    all             all             0.0.0.0/0               md5" | sudo tee -a "$PG_HBA" >/dev/null
+
+# Open firewall port if firewalld is active
+if sudo systemctl is-active --quiet firewalld; then
+    sudo firewall-cmd --add-port=5432/tcp --permanent >/dev/null 2>&1 || true
+    sudo firewall-cmd --reload >/dev/null 2>&1 || true
+fi
 
 # Start and enable PostgreSQL service
 sudo systemctl daemon-reload
