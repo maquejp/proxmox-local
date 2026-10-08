@@ -10,7 +10,7 @@ source "${LIB_DIR}/vm.sh"
 # Defaults
 CORES=6
 MEMORY="16G"
-DISK="60G"
+DISK="20G"
 
 # Proxmox configuration
 STORAGE="${PROXMOX_STORAGE}"
