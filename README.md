@@ -37,7 +37,7 @@ The environment is divided into separate responsibilities:
             | shell environment     | environment
             v                       v
        Developer tools        Application stack
-                                   
+
                     |
                     v
             delete-dev-vm.sh
@@ -99,6 +99,7 @@ The shell setup is intentionally independent from project-specific tooling.
 `setup-dev-project.sh` is an interactive configuration wizard responsible for preparing a development environment inside an existing VM.
 
 It handles:
+
 - **Project Name & Source selection**: Support for both brand-new project scaffolding or cloning an existing Git repository.
 - **Automated SSH Configuration**: Dedicated GitHub SSH key generation, secure permission management, automated SSH client config generation, adding GitHub host key to `known_hosts`, and interactive testing of authentication.
 - **Runtime Installation**: Automatically updates the target VM to install Node.js 24, PHP 8.4 (via Remi repo) and Composer, or Java 25 (OpenJDK).
@@ -107,6 +108,7 @@ It handles:
 - **Git Initialization**: Automatically configures the Git author name and email inside the repository.
 
 The project setup workflow remains separate from generic VM provisioning and developer shell setup.
+
 ## VM Deletion
 
 `delete-dev-vm.sh` is responsible for completely removing a development VM from Proxmox.
@@ -160,7 +162,7 @@ The deletion script only removes the VM and its associated Proxmox resources. It
 
 The default operating system is:
 
-**Rocky Linux**
+**_Rocky Linux_**
 
 Development VMs use the Rocky Linux GenericCloud image together with Cloud-Init.
 
@@ -181,24 +183,24 @@ The default should remain Rocky Linux whenever there is no technical reason to d
 
 The current default development VM configuration is:
 
-| Setting | Default |
-|---|---|
-| Operating system | Rocky Linux |
-| CPU | 6 cores |
-| Memory | 16 GB |
-| Disk | 60 GB |
-| Storage | `local-lvm` |
-| Network bridge | `vmbr0` |
-| Network | VirtIO |
-| IP configuration | Static IPv4 |
-| Gateway | `192.168.1.1` |
-| Machine type | `q35` |
-| BIOS | SeaBIOS |
-| CPU type | `host` |
-| Cloud-Init | Enabled |
-| QEMU Guest Agent | Enabled |
+| Setting            | Default        |
+| ------------------ | -------------- |
+| Operating system   | Rocky Linux    |
+| CPU                | 6 cores        |
+| Memory             | 16 GB          |
+| Disk               | 20 GB          |
+| Storage            | `local-lvm`    |
+| Network bridge     | `vmbr0`        |
+| Network            | VirtIO         |
+| IP configuration   | Static IPv4    |
+| Gateway            | `192.168.1.1`  |
+| Machine type       | `q35`          |
+| BIOS               | SeaBIOS        |
+| CPU type           | `host`         |
+| Cloud-Init         | Enabled        |
+| QEMU Guest Agent   | Enabled        |
 | SSH authentication | SSH public key |
-| VM startup | Automatic |
+| VM startup         | Automatic      |
 
 The defaults can be overridden when creating a VM.
 
@@ -297,7 +299,7 @@ This creates a VM using the default configuration:
 
     CPU:      6 cores
     Memory:   16 GB
-    Disk:     60 GB
+    Disk:     20 GB
     IP:       192.168.1.201
 
 The VM is automatically started after provisioning.
@@ -393,6 +395,7 @@ This launches a prompt sequence to gather options, outputting a summary of the c
 4. **Runtime & Framework Selection**: Select frontend (Vite+React or Angular) or backend (Express, Laravel, or Spring Boot). Runtimes (Node 24, PHP 8.4 + Composer, Java 25 OpenJDK) are automatically installed based on selections.
 5. **Database Configuration & Versioning**: Choice between None, Local Database (PostgreSQL 15/16/17, MariaDB 10.11/11.4, MongoDB 7.0/8.0 with dedicated database and credentials automatically created), or Existing VM.
 6. **Git Config**: Automatically configures name and email for local commits.
+
 ## Development Workflow
 
 The intended workflow is:
@@ -568,6 +571,7 @@ The Proxmox host only executes the SSH-based provisioning commands.
 `setup-dev-project.sh` has been implemented and validated.
 
 The project setup has been verified for:
+
 - Automatic interactive prompt flow and validations
 - VM state and SSH availability checks
 - Generates secure SSH configs and connects to GitHub
@@ -576,4 +580,3 @@ The project setup has been verified for:
 - Remote Git repository initialization and automated commit configuration
 
 The project setup workflow remains cleanly separated from VM provisioning and generic developer shell configuration.
-
