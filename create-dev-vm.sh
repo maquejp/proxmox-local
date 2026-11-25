@@ -96,9 +96,40 @@ validate_ip_not_configured() {
   done < <(qm list | awk 'NR > 1 {print $1}')
 }
 
+download_rocky_image() {
+  local target_path="$1"
+  local target_dir
+  target_dir="$(dirname "$target_path")"
+
+  log_info "Creating target directory: $target_dir"
+  mkdir -p "$target_dir"
+
+  log_info "Downloading Rocky Linux image from ${ROCKY_IMAGE_DOWNLOAD_URL}..."
+  if command -v wget &>/dev/null; then
+    if ! wget -O "$target_path" "${ROCKY_IMAGE_DOWNLOAD_URL}"; then
+      rm -f "$target_path"
+      error "Failed to download Rocky Linux image from ${ROCKY_IMAGE_DOWNLOAD_URL}"
+    fi
+  elif command -v curl &>/dev/null; then
+    if ! curl -fL -o "$target_path" "${ROCKY_IMAGE_DOWNLOAD_URL}"; then
+      rm -f "$target_path"
+      error "Failed to download Rocky Linux image from ${ROCKY_IMAGE_DOWNLOAD_URL}"
+    fi
+  else
+    error "Neither wget nor curl is available to download the Rocky Linux image."
+  fi
+
+  log_success "Rocky Linux image downloaded successfully to $target_path"
+}
+
 validate_rocky_image() {
   if [[ ! -f "$ROCKY_IMAGE" ]]; then
-    error "Rocky Linux image not found: $ROCKY_IMAGE"
+    log_warn "Rocky Linux image not found at: $ROCKY_IMAGE"
+    if confirm "Would you like to download the image now to $ROCKY_IMAGE?" "y"; then
+      download_rocky_image "$ROCKY_IMAGE"
+    else
+      error "Rocky Linux image not found: $ROCKY_IMAGE"
+    fi
   fi
 }
 

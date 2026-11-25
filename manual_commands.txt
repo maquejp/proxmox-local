@@ -1,12 +1,13 @@
 mkdir -p /var/lib/vz/template/qcow2
 cd /var/lib/vz/template/qcow2
 
-wget https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
+# NOTE: Always use the .latest URL alias as specific version build URLs expire from upstream mirrors over time.
+wget https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
 
-wget https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2.CHECKSUM
+wget https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2.CHECKSUM
 
-sha256sum Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
-cat Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2.CHECKSUM
+sha256sum Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
+cat Rocky-10-GenericCloud-Base.latest.x86_64.qcow2.CHECKSUM
 
 qm create 200 \
   --name rocky-test \
@@ -18,7 +19,7 @@ qm create 200 \
   --net0 virtio,bridge=vmbr0,firewall=1
 
 qm importdisk 200 \
-  Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2 \
+  Rocky-10-GenericCloud-Base.latest.x86_64.qcow2 \
   local-lvm
 
 qm set 200 --scsihw virtio-scsi-single

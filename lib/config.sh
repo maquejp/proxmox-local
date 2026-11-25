@@ -18,7 +18,8 @@ SSH_TIMEOUT=60
 SSH_CONNECT_TIMEOUT=5
 
 # Rocky Linux image
-ROCKY_IMAGE_DEFAULT="/var/lib/vz/template/qcow2/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2"
+ROCKY_IMAGE_DEFAULT="/var/lib/vz/template/qcow2/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2"
+ROCKY_IMAGE_DOWNLOAD_URL="https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2"
 
 # Shell setup
 EZA_VERSION="0.23.5"

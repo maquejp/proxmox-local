@@ -314,13 +314,16 @@ Defaults can be overridden:
         --memory 24G \
         --disk 100G
 
-    # Override Rocky image path if needed
+        # Override Rocky image path if needed
     ./create-dev-vm.sh \
         --name test \
         --id 203 \
         --ip 192.168.88.203 \
         --ssh-public-key /root/id_ed25519.pub \
-        --rocky-image /var/lib/vz/template/qcow2/custom-rocky.qcow2
+        --rocky-image /var/lib/vz/template/qcow2/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2
+
+> **Note on Upstream Image Downloads:**  
+> When downloading Rocky Linux cloud images, always download using the `.latest.` URL (e.g. `https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2`). Specific version/date URL links expire when newer point releases are published upstream, resulting in `HTTP 404 Not Found` errors.
 
 ### Delete a Development VM
 
