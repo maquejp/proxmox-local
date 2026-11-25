@@ -330,7 +330,14 @@ fi
 
 prompt_if_empty "NAME" "VM name"
 prompt_if_empty "VMID" "VM ID"
-prompt_if_empty "IP" "VM static IP"
+
+# Compute default IP from VMID if IP is not provided
+DEFAULT_IP=""
+if [[ -n "$VMID" && "$VMID" =~ ^[0-9]+$ ]]; then
+  DEFAULT_IP="192.168.88.${VMID}"
+fi
+
+prompt_if_empty "IP" "VM static IP" "$DEFAULT_IP"
 prompt_ssh_key_if_empty
 
 # Allow interactive override of optional values
