@@ -27,5 +27,18 @@ npx @angular/cli@latest new \
     --skip-install \
     --defaults
 
+cd "/home/${DEV_USER}/${PROJECT_NAME}"
+
+python3 -c "
+import json
+with open('package.json', 'r+') as f:
+    data = json.load(f)
+    data.setdefault('scripts', {})['start'] = 'ng serve --host 0.0.0.0'
+    f.seek(0)
+    json.dump(data, f, indent=2)
+    f.truncate()
+    f.write('\n')
+"
+
 REMOTE
 }
