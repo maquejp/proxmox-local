@@ -10,6 +10,7 @@ set -euo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 
 source "${LIB_DIR}/vm.sh"
+source "${LIB_DIR}/shell.sh"
 source "${LIB_DIR}/project/prompts.sh"
 source "${LIB_DIR}/project/github-ssh.sh"
 source "${LIB_DIR}/project/existing-repository.sh"
@@ -145,4 +146,8 @@ else
 
     setup_new_project
 
+fi
+
+if confirm "Would you like to configure the developer shell environment on VM $VMID now?" "y"; then
+    setup_dev_shell
 fi

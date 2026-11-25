@@ -6,6 +6,7 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)"
 source "${LIB_DIR}/config.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/vm.sh"
+source "${LIB_DIR}/shell.sh"
 
 # Defaults
 CORES=6
@@ -394,3 +395,7 @@ echo "  Name  : $NAME"
 echo "  IP    : $IP"
 echo "  SSH   : ${DEV_USER}@${IP}"
 echo
+
+if confirm "Would you like to configure the developer shell environment now?" "y"; then
+  setup_dev_shell
+fi

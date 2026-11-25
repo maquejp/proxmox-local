@@ -262,9 +262,12 @@ The structure is intentionally kept modular.
     ├── delete-dev-vm.sh
     ├── setup-dev-shell.sh
     ├── setup-dev-project.sh
+    ├── templates/
+    │   └── aliases
     └── lib/
         ├── common.sh
         ├── config.sh
+        ├── shell.sh
         ├── vm.sh
         └── project/
             ├── existing-repository.sh
