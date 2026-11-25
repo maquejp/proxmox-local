@@ -356,8 +356,12 @@ Protected VM IDs cannot be deleted by the script.
 
 ### Configure the Developer Shell
 
-After the VM has been created and started, the common developer shell environment can be configured with:
+After the VM has been created and started, the common developer shell environment can be configured interactively or directly:
 
+    # Interactive selection
+    ./setup-dev-shell.sh
+
+    # Direct VM selection
     ./setup-dev-shell.sh --vm 201
 
 The script connects to the VM through SSH and configures the `dev` user's shell environment.
