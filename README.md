@@ -193,7 +193,7 @@ The current default development VM configuration is:
 | Network bridge     | `vmbr0`        |
 | Network            | VirtIO         |
 | IP configuration   | Static IPv4    |
-| Gateway            | `192.168.1.1`  |
+| Gateway            | `192.168.88.1` |
 | Machine type       | `q35`          |
 | BIOS               | SeaBIOS        |
 | CPU type           | `host`         |
@@ -212,11 +212,11 @@ For example:
 
     VM ID    IP address
 
-    201      192.168.1.201
-    202      192.168.1.202
-    203      192.168.1.203
-    204      192.168.1.204
-    205      192.168.1.205
+    201      192.168.88.201
+    202      192.168.88.202
+    203      192.168.88.203
+    204      192.168.88.204
+    205      192.168.88.205
 
 The provisioning script validates that:
 
@@ -249,7 +249,7 @@ Example manual connection:
 
     ssh \
         -i /root/.ssh/id_ed25519_vm_admin \
-        dev@192.168.1.205
+        dev@192.168.88.205
 
 ## Repository Structure
 
@@ -293,14 +293,14 @@ Example:
     ./create-dev-vm.sh \
         --name taskmanager \
         --id 201 \
-        --ip 192.168.1.201
+        --ip 192.168.88.201
 
 This creates a VM using the default configuration:
 
     CPU:      6 cores
     Memory:   16 GB
     Disk:     20 GB
-    IP:       192.168.1.201
+    IP:       192.168.88.201
 
 The VM is automatically started after provisioning.
 
@@ -309,7 +309,7 @@ Defaults can be overridden:
     ./create-dev-vm.sh \
         --name big-project \
         --id 202 \
-        --ip 192.168.1.202 \
+        --ip 192.168.88.202 \
         --cores 8 \
         --memory 24G \
         --disk 100G
@@ -318,7 +318,7 @@ Defaults can be overridden:
     ./create-dev-vm.sh \
         --name test \
         --id 203 \
-        --ip 192.168.1.203 \
+        --ip 192.168.88.203 \
         --ssh-public-key /root/id_ed25519.pub \
         --rocky-image /var/lib/vz/template/qcow2/custom-rocky.qcow2
 
@@ -377,7 +377,7 @@ After the setup completes, reconnect to the VM:
 
     ssh \
         -i /root/.ssh/id_ed25519_vm_admin \
-        dev@192.168.1.201
+        dev@192.168.88.201
 
 ### Configure a Project
 

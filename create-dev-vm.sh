@@ -57,7 +57,7 @@ Optional:
   -h, --help            Show this help
 
 Example:
-  $0 --name taskmanager --id 201 --ip 192.168.1.201 \\
+  $0 --name taskmanager --id 201 --ip 192.168.88.201 \\
       --ssh-public-key /root/id_ed25519.pub
 EOF
 }
