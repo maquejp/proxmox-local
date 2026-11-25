@@ -33,11 +33,11 @@ show_project_summary() {
         printf '  Database : %s\n' "$DATABASE_STRATEGY"
     fi
 
-    if [[ -n "$DATABASE_ENGINE" ]]; then
+    if [[ -n "${DATABASE_ENGINE:-}" ]]; then
         printf '  Engine   : %s\n' "$DATABASE_ENGINE"
     fi
 
-    if [[ -n "$DATABASE_VERSION" ]]; then
+    if [[ -n "${DATABASE_VERSION:-}" ]]; then
         printf '  Version  : %s\n' "$DATABASE_VERSION"
     fi
 }
