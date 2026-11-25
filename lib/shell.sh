@@ -15,7 +15,7 @@ install_system_packages() {
   run_remote bash -s <<'REMOTE'
 set -euo pipefail
 if command -v dnf >/dev/null 2>&1; then
-  sudo dnf upgrade -y
+  sudo dnf upgrade --refresh -y
 else
   echo "Error: dnf not found." >&2
   exit 1
