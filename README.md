@@ -87,6 +87,7 @@ It currently handles:
 - `eza`
 - Starship
 - user-local `PATH`
+- `TERM` environment variable configuration (`export TERM=xterm-256color`)
 - Bash aliases
 - Git aliases
 - Node/npm aliases

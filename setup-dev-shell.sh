@@ -164,6 +164,21 @@ PY
 REMOTE
 }
 
+configure_term() {
+  log_info "Configuring TERM environment variable..."
+  run_remote bash -s <<'REMOTE'
+set -euo pipefail
+BASHRC="$HOME/.bashrc"
+if ! grep -Fq 'export TERM=xterm-256color' "$BASHRC"; then
+  cat >> "$BASHRC" <<'EOF'
+
+# Set terminal type for compatibility
+export TERM=xterm-256color
+EOF
+fi
+REMOTE
+}
+
 configure_aliases() {
   log_info "Configuring Bash aliases..."
   run_remote bash -s <<'REMOTE'
@@ -345,6 +360,7 @@ install_system_packages
 install_eza
 install_starship
 configure_path
+configure_term
 configure_aliases
 configure_starship
 
@@ -358,5 +374,6 @@ echo "  eza     : v${EZA_VERSION}"
 echo "  bat     : installed"
 echo "  rg      : installed"
 echo "  Starship: installed"
+echo "  TERM    : xterm-256color"
 echo
 log_info "Reconnect to the VM to load the new shell configuration."
